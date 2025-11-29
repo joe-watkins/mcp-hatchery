@@ -120,13 +120,16 @@ export async function scaffoldProject(config, analysis, targetDir) {
   console.log(chalk.white('\n  2. Install dependencies:'));
   console.log(chalk.gray('     npm install'));
   
-  if (config.deployment === 'remote' || config.deployment === 'both') {
-    const stepNum = config.deployment === 'both' ? '3' : '3';
-    console.log(chalk.white(`\n  ${stepNum}. Deploy to Netlify:`));
+  const hasRemote = config.deployment === 'remote' || config.deployment === 'both';
+  const editStepNum = hasRemote ? '4' : '3';
+  
+  console.log(chalk.white(`\n  3. Edit your tools:`));
+  console.log(chalk.gray('     Open src/tools.js and customize your tools'));
+  
+  if (hasRemote) {
+    console.log(chalk.white('\n  4. Deploy to Netlify:'));
     console.log(chalk.gray('     Push to GitHub and connect to Netlify'));
   }
   
-  const editStepNum = config.deployment === 'both' ? '4' : (config.deployment === 'remote' ? '4' : '3');
-  console.log(chalk.white(`\n  ${editStepNum}. Edit your tools:`));
-  console.log(chalk.gray('     Open src/tools.js and customize your tools\n'));
+  console.log();
 }
