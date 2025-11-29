@@ -19,28 +19,11 @@ export async function promptProjectConfig(initialProjectName) {
       name: 'description',
       message: 'Project description:',
       default: 'My MCP server'
-    },
-    {
-      type: 'list',
-      name: 'sourceType',
-      message: 'How would you like to start?',
-      choices: [
-        { name: 'Create a bare-bones MCP server', value: 'bare-bones' },
-        { name: 'Analyze an existing local MCP server', value: 'local' }
-      ]
-    },
-    {
-      type: 'input',
-      name: 'sourcePath',
-      message: 'Enter the local path to the MCP server:',
-      when: (answers) => answers.sourceType === 'local',
-      validate: async (input) => {
-        const exists = await fs.pathExists(input);
-        if (exists) return true;
-        return 'Path does not exist';
-      }
     }
   ]);
+
+  // Always use bare-bones
+  answers.sourceType = 'bare-bones';
 
   return answers;
 }

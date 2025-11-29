@@ -4,12 +4,11 @@ A CLI tool to scaffold Model Context Protocol (MCP) servers that work both local
 
 ## Features
 
-- 🚀 **Quick Start**: Create MCP servers in seconds with interactive prompts
+- 🚀 **Quick Start**: Create MCP servers in seconds with a simple 2-question prompt
 - 🔄 **Dual Transport**: Supports both stdio (local) and SSE (remote via Netlify)
-- 📦 **Code Analysis**: Analyze existing local MCP servers and replicate their tool structure
-- 🎨 **TypeScript**: All projects use TypeScript with proper type definitions
+- 🎨 **TypeScript-First**: All projects use TypeScript with Zod schema validation
 - 🌐 **Netlify Ready**: Automatically configured for Netlify Functions deployment
-- 🛠️ **Separated Tools**: Clean architecture with tools defined separately from server setup
+- 🛠️ **Clean Architecture**: Tools defined separately from server setup for easy maintenance
 
 ## Installation
 
@@ -33,13 +32,12 @@ npx mcp-hatchery create my-mcp-server
 mcp-hatchery create
 ```
 
-This will guide you through:
+You'll be prompted for:
 
-1. **Project Name**: Choose a name for your server (lowercase, letters, numbers, hyphens)
-2. **Description**: Brief description of what your server does
-3. **Source Type**: 
-   - **Bare-bones**: Start with sample tools (echo and get-greeting)
-   - **Analyze local**: Extract tools from an existing local MCP server
+1. **Project Name**: Your server name (lowercase, letters, numbers, hyphens only)
+2. **Description**: Brief description of your server's purpose
+
+That's it! The tool creates a complete MCP server with two example tools (echo and get-greeting) ready for customization.
 
 ### Quick Create
 
@@ -53,8 +51,11 @@ mcp-hatchery create my-server
 mcp-hatchery create my-server --directory ./projects/my-server
 ```
 
-## Generated Project Structure
+## What You Get
 
+Every generated project includes:
+
+### Project Structure
 ```
 my-mcp-server/
 ├── src/
@@ -72,24 +73,35 @@ my-mcp-server/
 └── README.md
 ```
 
+### Two Example Tools
+- **echo**: Echoes back a message (demonstrates string input/output)
+- **get-greeting**: Returns a personalized greeting (demonstrates parameter usage)
+
+These examples show you the pattern—just customize or replace them with your own tools!
+
 ## How It Works
 
-The generated MCP server follows a clean, separated architecture:
+Your generated MCP server uses a clean, maintainable architecture:
 
-1. **Tool Definitions** (`src/tools.ts`): All tools are defined in one file with:
-   - Name and description
-   - Zod schemas for input validation
-   - Handler functions with business logic
+### Tool Definitions (`src/tools.ts`)
+All tools are defined in one file using a simple, consistent structure:
+- **name**: Unique identifier
+- **description**: What the tool does
+- **inputSchema**: Zod schema for runtime validation
+- **handler**: Async function implementing the logic
 
-2. **Local Server** (`src/index.ts`): 
-   - Uses stdio transport for local MCP clients like Claude Desktop
-   - Imports and registers tools from `tools.ts`
+### Local Server (`src/index.ts`)
+- Uses stdio transport for Claude Desktop and other local MCP clients
+- Imports and registers all tools from `tools.ts`
+- Handles MCP protocol communication
 
-3. **Remote Server** (`netlify/functions/api.js`): 
-   - Netlify Function using SSE transport for remote access
-   - Imports the same tool definitions from compiled `build/tools.js`
+### Remote Server (`netlify/functions/api.js`)
+- Netlify Function using SSE (Server-Sent Events) transport
+- Imports the same compiled tool definitions from `build/tools.js`
+- Enables remote access via HTTP
 
-4. **Shared Logic**: Both transports use identical tool definitions, ensuring consistency between local and remote deployments.
+### Key Benefit
+Both local and remote servers use **identical tool logic**—write once, run anywhere!
 
 ## Local Development
 
@@ -149,35 +161,50 @@ Once deployed, your MCP server will be available at:
 
 Configure remote MCP clients to use these endpoints for remote access.
 
-## Project Types
+## Customizing Your Server
 
-### Bare-Bones Server
+### Adding New Tools
 
-Creates a minimal MCP server with two example tools:
-- **echo**: Echoes back a message
-- **get-greeting**: Returns a personalized greeting
+Edit `src/tools.ts` in your generated project. Each tool follows this structure:
 
-Perfect for starting from scratch and building your own tools.
-
-```bash
-mcp-hatchery create my-server
-# Select "Create a bare-bones MCP server"
+```typescript
+{
+  name: 'my-tool',                    // Unique identifier
+  description: 'What this tool does', // User-facing description
+  inputSchema: z.object({             // Zod schema for validation
+    param: z.string().describe('Parameter description')
+  }),
+  handler: async (args) => {          // Implementation
+    return {
+      content: [{
+        type: 'text' as const,
+        text: `Result: ${args.param}`
+      }]
+    };
+  }
+}
 ```
 
-### Analyze Local Server
-
-Analyzes an existing local MCP server directory and extracts its tool definitions to generate a new project with similar tools.
-
-Useful for:
-- Replicating an existing MCP server's structure
-- Migrating to the Netlify-ready architecture
-- Creating variations of existing servers
+**After editing**, rebuild the project:
 
 ```bash
-mcp-hatchery create enhanced-server
-# Select "Analyze an existing local MCP server"
-# Enter: C:\path\to\existing\mcp-server
+npm run build
 ```
+
+### Modifying Example Tools
+
+Simply edit the `echo` and `get-greeting` tools in `src/tools.ts` to suit your needs, or remove them entirely and add your own.
+
+## Why Zod?
+
+[Zod](https://zod.dev/) is a TypeScript-first schema validation library that provides:
+
+- **Runtime Validation**: Ensures incoming data matches your schema
+- **Type Safety**: TypeScript automatically infers types from schemas
+- **Documentation**: Descriptions become part of the tool's API
+- **Error Messages**: Clear validation errors when inputs don't match
+
+Perfect for MCP servers where tool inputs come from external clients!
 
 ## Development
 
@@ -205,58 +232,27 @@ npm run dev
 - Node.js >= 18.0.0
 - npm or yarn
 
-## Adding Tools to Your Generated Project
-
-Edit `src/tools.ts` in your generated project. Each tool needs:
-
-```typescript
-{
-  name: 'my-tool',                    // Unique identifier
-  description: 'What this tool does', // User-facing description
-  inputSchema: z.object({             // Zod schema for validation
-    param: z.string().describe('Description of param')
-  }),
-  handler: async (args) => {          // Implementation
-    return {
-      content: [{
-        type: 'text' as const,
-        text: `Result: ${args.param}`
-      }]
-    };
-  }
-}
-```
-
-After editing, rebuild:
-
-```bash
-npm run build
-```
-
 ## Architecture
 
-MCP Hatchery generates servers with this architecture:
-
 ### Separated Concerns
-- **Tool definitions** are isolated in `src/tools.ts`, making them easy to find, modify, and test
-- **Server setup** in `src/index.ts` handles MCP protocol details
-- **Netlify wrapper** in `netlify/functions/api.js` adapts for serverless deployment
+- **Tool definitions** isolated in `src/tools.ts` for easy discovery and modification
+- **Server logic** in `src/index.ts` handles MCP protocol communication
+- **Deployment wrapper** in `netlify/functions/api.js` adapts for serverless
 
 ### Type Safety
-- Full TypeScript support throughout
-- Zod schemas provide runtime validation
-- Type inference from schemas to handlers
+- Full TypeScript support with strict type checking
+- Zod schemas provide both compile-time and runtime validation
+- Type inference flows from schemas through to handlers
 
 ### Dual Transport
-- **Stdio**: Fast local communication for Claude Desktop
-- **SSE**: Server-Sent Events for remote HTTP access via Netlify
-- Same tool logic works for both transports seamlessly
+- **Stdio**: Direct process communication for local MCP clients (fast!)
+- **SSE**: Server-Sent Events over HTTP for remote access (flexible!)
+- Same tool definitions work seamlessly with both transports
 
 ### Build Process
-TypeScript compiles to `build/` directory:
-- Local stdio server imports from `build/index.js`
-- Netlify function imports from `build/tools.js`
-- Single source of truth for all tool definitions
+- TypeScript compiles from `src/` to `build/`
+- Both local and remote servers import from `build/`
+- Single source of truth ensures consistency
 
 ## Learn More
 

@@ -1,7 +1,6 @@
 import path from 'path';
 import chalk from 'chalk';
 import { promptProjectConfig } from '../prompts.js';
-import { analyzeServer } from '../analyzer.js';
 import { scaffoldProject } from '../scaffold.js';
 
 /**
@@ -12,19 +11,13 @@ export async function createProject(projectName, options) {
     // Get configuration from user
     const config = await promptProjectConfig(projectName);
 
-    // Analyze source if needed
-    console.log(chalk.cyan('\n🔍 Analyzing MCP server...\n'));
-    const analysis = await analyzeServer(config);
-
-    if (analysis.summary.toolCount > 0) {
-      console.log(chalk.green(`Found ${analysis.summary.toolCount} tool(s)`));
-    }
-    if (analysis.summary.resourceCount > 0) {
-      console.log(chalk.green(`Found ${analysis.summary.resourceCount} resource(s)`));
-    }
-    if (analysis.summary.promptCount > 0) {
-      console.log(chalk.green(`Found ${analysis.summary.promptCount} prompt(s)`));
-    }
+    // Empty analysis for bare-bones projects
+    const analysis = {
+      tools: [],
+      resources: [],
+      prompts: [],
+      summary: { toolCount: 0, resourceCount: 0, promptCount: 0 }
+    };
 
     // Determine target directory
     const targetDir = options.directory 
