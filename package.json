@@ -1,6 +1,6 @@
 {
   "name": "mcp-hatchery",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "CLI tool to scaffold Model Context Protocol (MCP) servers for local and remote deployment",
   "main": "index.js",
   "type": "module",
