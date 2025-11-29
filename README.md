@@ -2,6 +2,8 @@
 
 A CLI tool to scaffold Model Context Protocol (MCP) servers for both local and remote deployment.
 
+`node bin/mcp-hatchery.js create my-first-hatch`
+
 ## Features
 
 - 🚀 **Quick Start**: Create MCP servers in seconds with interactive prompts
