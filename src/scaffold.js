@@ -28,6 +28,7 @@ export async function scaffoldProject(config, analysis, targetDir) {
 
   // Create directory structure
   await fs.ensureDir(path.join(targetDir, 'src'));
+  await fs.ensureDir(path.join(targetDir, 'data'));
   
   // Only create netlify directory if needed
   if (config.deployment === 'remote' || config.deployment === 'both') {
@@ -84,6 +85,11 @@ export async function scaffoldProject(config, analysis, targetDir) {
       path: 'README.md',
       content: generateReadme(config, analysis),
       description: 'README.md'
+    },
+    {
+      path: 'data/README.md',
+      content: '# Data\n\nStore your JSON data files here. You can use these files to generate new tools using an LLM.',
+      description: 'data/README.md'
     }
   );
 

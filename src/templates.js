@@ -432,6 +432,22 @@ ${toolsList}
 ${localSection}${remoteSection}
 ${projectStructure}
 
+## Generating Tools from Data
+
+You can use the \`data\` folder to store JSON files and use an LLM (like Claude or Copilot) to generate tools for them.
+
+1. Place your JSON file in the \`data\` folder (e.g., \`data/products.json\`).
+2. Use the following prompt with your LLM:
+
+> I have a JSON file at \`data/products.json\` (or whatever your file is named). Please analyze the structure of this data and create new MCP tools in \`src/tools.js\` to interact with it.
+>
+> At a minimum, please create:
+> 1. A tool to list all items (with optional filtering)
+> 2. A tool to get a specific item by ID (or unique field)
+> 3. A tool to search items by a keyword
+>
+> Please ensure the tools follow the existing pattern in \`src/tools.js\` and include proper error handling.
+
 ## Adding New Tools
 
 Edit \`src/tools.js\` to add new tool definitions. Each tool needs:
