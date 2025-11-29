@@ -6,9 +6,11 @@ import {
   generateToolDefinitions,
   generateIndexFile,
   generateNetlifyFunction,
+  generateVercelFunction,
   generateReadme,
   generateGitignore,
-  generateNetlifyConfig
+  generateNetlifyConfig,
+  generateVercelConfig
 } from './templates.js';
 
 /**
@@ -32,7 +34,11 @@ export async function scaffoldProject(config, analysis, targetDir) {
   
   // Only create netlify directory if needed
   if (config.deployment === 'remote' || config.deployment === 'both') {
-    await fs.ensureDir(path.join(targetDir, 'netlify', 'functions'));
+    if (config.remoteHost === 'vercel') {
+      await fs.ensureDir(path.join(targetDir, 'api'));
+    } else {
+      await fs.ensureDir(path.join(targetDir, 'netlify', 'functions'));
+    }
   }
 
   // Generate and write files
@@ -60,18 +66,33 @@ export async function scaffoldProject(config, analysis, targetDir) {
 
   // Add remote server files if needed
   if (config.deployment === 'remote' || config.deployment === 'both') {
-    files.push(
-      {
-        path: 'netlify/functions/api.js',
-        content: generateNetlifyFunction(config),
-        description: 'Netlify Function (HTTP/SSE)'
-      },
-      {
-        path: 'netlify.toml',
-        content: generateNetlifyConfig(config),
-        description: 'Netlify configuration'
-      }
-    );
+    if (config.remoteHost === 'vercel') {
+      files.push(
+        {
+          path: 'api/index.js',
+          content: generateVercelFunction(config),
+          description: 'Vercel Function (HTTP/SSE)'
+        },
+        {
+          path: 'vercel.json',
+          content: generateVercelConfig(config),
+          description: 'Vercel configuration'
+        }
+      );
+    } else {
+      files.push(
+        {
+          path: 'netlify/functions/api.js',
+          content: generateNetlifyFunction(config),
+          description: 'Netlify Function (HTTP/SSE)'
+        },
+        {
+          path: 'netlify.toml',
+          content: generateNetlifyConfig(config),
+          description: 'Netlify configuration'
+        }
+      );
+    }
   }
 
   // Add common files
@@ -106,11 +127,11 @@ export async function scaffoldProject(config, analysis, targetDir) {
   console.log(chalk.white('  Language:'), chalk.bold('JavaScript'));
   
   if (config.deployment === 'both') {
-    console.log(chalk.white('  Deployment:'), chalk.bold('Local (stdio) + Remote (Netlify)'));
+    console.log(chalk.white('  Deployment:'), chalk.bold(`Local (stdio) + Remote (${config.remoteHost === 'vercel' ? 'Vercel' : 'Netlify'})`));
   } else if (config.deployment === 'local') {
     console.log(chalk.white('  Deployment:'), chalk.bold('Local only (stdio)'));
   } else {
-    console.log(chalk.white('  Deployment:'), chalk.bold('Remote only (Netlify)'));
+    console.log(chalk.white('  Deployment:'), chalk.bold(`Remote only (${config.remoteHost === 'vercel' ? 'Vercel' : 'Netlify'})`));
   }
   
   if (analysis.summary.toolCount > 0) {
@@ -133,8 +154,9 @@ export async function scaffoldProject(config, analysis, targetDir) {
   console.log(chalk.gray('     Open src/tools.js and customize your tools'));
   
   if (hasRemote) {
-    console.log(chalk.white('\n  4. Deploy to Netlify:'));
-    console.log(chalk.gray('     Push to GitHub and connect to Netlify'));
+    const hostName = config.remoteHost === 'vercel' ? 'Vercel' : 'Netlify';
+    console.log(chalk.white(`\n  4. Deploy to ${hostName}:`));
+    console.log(chalk.gray(`     Push to GitHub and connect to ${hostName}`));
   }
   
   console.log();

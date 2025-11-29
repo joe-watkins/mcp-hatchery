@@ -27,9 +27,20 @@ export async function promptProjectConfig(initialProjectName) {
       choices: [
         { name: 'Both (Local + Remote)', value: 'both' },
         { name: 'Local only (stdio)', value: 'local' },
-        { name: 'Remote only (Netlify)', value: 'remote' }
+        { name: 'Remote only', value: 'remote' }
       ],
       default: 'both'
+    },
+    {
+      type: 'list',
+      name: 'remoteHost',
+      message: 'Remote host:',
+      choices: [
+        { name: 'Netlify', value: 'netlify' },
+        { name: 'Vercel', value: 'vercel' }
+      ],
+      default: 'netlify',
+      when: (answers) => answers.deployment === 'remote' || answers.deployment === 'both'
     }
   ]);
 

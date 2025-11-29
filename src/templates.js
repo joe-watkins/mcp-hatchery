@@ -6,8 +6,8 @@ export function generatePackageJson(config, analysis) {
     '@modelcontextprotocol/sdk': '^1.0.4'
   };
 
-  // Only add serverless-http if deploying remotely
-  if (config.deployment === 'remote' || config.deployment === 'both') {
+  // Only add serverless-http if deploying remotely to Netlify
+  if ((config.deployment === 'remote' || config.deployment === 'both') && config.remoteHost !== 'vercel') {
     dependencies['serverless-http'] = '^3.2.0';
   }
 
@@ -213,6 +213,63 @@ main().catch((error) => {
 }
 
 /**
+ * Generate Vercel Function handler (api/index.js)
+ */
+export function generateVercelFunction(config) {
+  return `import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { tools } from '../src/tools.js';
+
+export const config = {
+  maxDuration: 60,
+};
+
+export default async function handler(req, res) {
+  const server = new Server(
+    {
+      name: '${config.projectName}',
+      version: '1.0.0',
+    },
+    {
+      capabilities: {
+        tools: {},
+      },
+    }
+  );
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    return {
+      tools: tools.map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema
+      }))
+    };
+  });
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const tool = tools.find(t => t.name === request.params.name);
+    if (!tool) {
+      throw new Error(\`Unknown tool: \${request.params.name}\`);
+    }
+    return await tool.handler(request.params.arguments);
+  });
+
+  // Use StreamableHTTPServerTransport which handles both SSE and direct HTTP
+  // We enable JSON response for stateless operation on Vercel
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined, // Stateless
+    enableJsonResponse: true,
+  });
+
+  await server.connect(transport);
+  await transport.handleRequest(req, res, req.body);
+};
+`;
+}
+
+/**
  * Generate Netlify Function handler (api.js)
  */
 export function generateNetlifyFunction(config) {
@@ -338,11 +395,13 @@ export function generateReadme(config, analysis) {
   
   let description = 'A Model Context Protocol (MCP) server';
   if (deployment === 'both') {
-    description += ' that works both locally (stdio) and remotely (Netlify Functions).';
+    const host = config.remoteHost === 'vercel' ? 'Vercel' : 'Netlify Functions';
+    description += ` that works both locally (stdio) and remotely (${host}).`;
   } else if (deployment === 'local') {
     description += ' for local use (stdio transport).';
   } else {
-    description += ' for remote deployment (Netlify Functions).';
+    const host = config.remoteHost === 'vercel' ? 'Vercel' : 'Netlify Functions';
+    description += ` for remote deployment (${host}).`;
   }
 
   let localSection = '';
@@ -367,7 +426,37 @@ Add this to your Claude Desktop MCP settings:
 
   let remoteSection = '';
   if (deployment === 'remote' || deployment === 'both') {
-    remoteSection = `
+    if (config.remoteHost === 'vercel') {
+      remoteSection = `
+## Deploy to Vercel
+
+This project is configured to deploy as a Vercel Function.
+
+### Deploy via GitHub
+
+1. Push this repository to GitHub
+2. Import the project in Vercel
+3. Vercel will automatically detect the configuration and deploy
+
+### Using the Remote Server
+
+Once deployed, configure your Claude Desktop MCP settings to use the remote server:
+
+\`\`\`json
+{
+  "mcpServers": {
+    "${config.projectName}": {
+      "command": "npx",
+      "args": ["mcp-remote@next", "https://your-project.vercel.app/api"]
+    }
+  }
+}
+\`\`\`
+
+Replace \`your-project.vercel.app\` with your actual Vercel URL.
+`;
+    } else {
+      remoteSection = `
 ## Deploy to Netlify
 
 This project is configured to deploy as a Netlify Function.
@@ -400,21 +489,35 @@ Replace \`your-site.netlify.app\` with your actual Netlify URL.
 - **MCP Endpoint**: \`https://your-site.netlify.app/mcp\`
 - **Health Check**: \`https://your-site.netlify.app/mcp\`
 `;
+    }
   }
 
-  let projectStructure = '## Project Structure\n\n';
+  let projectStructure = '## Project Structure\\n\\n';
   if (deployment === 'local') {
     projectStructure += `- \`src/index.js\` - Main MCP server with stdio transport
 - \`src/tools.js\` - Tool definitions and handlers`;
   } else if (deployment === 'remote') {
-    projectStructure += `- \`src/tools.js\` - Tool definitions and handlers
+    if (config.remoteHost === 'vercel') {
+      projectStructure += `- \`src/tools.js\` - Tool definitions and handlers
+- \`api/index.js\` - Vercel Function wrapper with SSE transport
+- \`vercel.json\` - Vercel configuration`;
+    } else {
+      projectStructure += `- \`src/tools.js\` - Tool definitions and handlers
 - \`netlify/functions/api.js\` - Netlify Function wrapper with SSE transport
 - \`netlify.toml\` - Netlify configuration`;
+    }
   } else {
     projectStructure += `- \`src/index.js\` - Main MCP server with stdio transport (local use)
-- \`src/tools.js\` - Tool definitions and handlers
+- \`src/tools.js\` - Tool definitions and handlers`;
+    if (config.remoteHost === 'vercel') {
+      projectStructure += `
+- \`api/index.js\` - Vercel Function wrapper with SSE transport (remote use)
+- \`vercel.json\` - Vercel configuration`;
+    } else {
+      projectStructure += `
 - \`netlify/functions/api.js\` - Netlify Function wrapper with SSE transport (remote use)
 - \`netlify.toml\` - Netlify configuration`;
+    }
   }
 
   return `# ${config.projectName}
@@ -461,7 +564,7 @@ Edit \`src/tools.js\` to add new tool definitions. Each tool needs:
 
 - [Model Context Protocol Documentation](https://modelcontextprotocol.io/)
 - [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
-- [Netlify Functions](https://docs.netlify.com/functions/overview/)
+${config.remoteHost === 'vercel' ? '- [Vercel Functions](https://vercel.com/docs/functions)' : '- [Netlify Functions](https://docs.netlify.com/functions/overview/)'}
 `;
 }
 
@@ -508,5 +611,19 @@ export function generateNetlifyConfig(config) {
   from = "/mcp/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
+`;
+}
+
+/**
+ * Generate Vercel configuration (vercel.json)
+ */
+export function generateVercelConfig(config) {
+  return `{
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 60
+    }
+  }
+}
 `;
 }
