@@ -19,7 +19,7 @@
     "express",
     "server"
   ],
-  "author": "",
+  "author": "Joe Watkins",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",
@@ -36,6 +36,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/mcp-hatchery.git"
+    "url": "https://github.com/joe-watkins/mcp-hatchery.git"
+  },
+  "homepage": "https://github.com/joe-watkins/mcp-hatchery#readme",
+  "bugs": {
+    "url": "https://github.com/joe-watkins/mcp-hatchery/issues"
   }
 }

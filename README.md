@@ -235,6 +235,66 @@ node bin/mcp-hatchery.js create test-server
 - [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
 - [MCP Servers Repository](https://github.com/modelcontextprotocol/servers)
 
+## Publishing to npm
+
+### First Time Setup
+
+1. Create an npm account at https://www.npmjs.com/signup (if you don't have one)
+
+2. Login to npm from the terminal:
+```bash
+npm login
+```
+
+3. Verify you're logged in:
+```bash
+npm whoami
+```
+
+### Publishing Steps
+
+1. Test your package locally first:
+```bash
+npm install
+node bin/mcp-hatchery.js create test-project
+```
+
+2. Check what will be published:
+```bash
+npm pack --dry-run
+```
+
+3. Publish to npm:
+```bash
+npm publish
+```
+
+### Publishing Updates
+
+When you make changes and want to publish a new version:
+
+```bash
+# Update version (choose one based on your changes)
+npm version patch  # 1.0.0 -> 1.0.1 (bug fixes)
+npm version minor  # 1.0.0 -> 1.1.0 (new features)
+npm version major  # 1.0.0 -> 2.0.0 (breaking changes)
+
+# Then publish
+npm publish
+```
+
+### Verify Publication
+
+- Visit: https://www.npmjs.com/package/mcp-hatchery
+- Test install: `npm install -g mcp-hatchery`
+- Test CLI: `mcp-hatchery create my-test-server`
+
+### Tips
+
+- **Scoped packages**: To publish as `@username/mcp-hatchery`, update package name and use `npm publish --access public`
+- **Beta versions**: Use `npm publish --tag beta` for pre-release versions
+- **Unpublish**: Within 72 hours, you can unpublish with `npm unpublish mcp-hatchery@version`
+
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request.
@@ -246,5 +306,5 @@ MIT
 ## Support
 
 For issues and questions:
-- GitHub Issues: https://github.com/your-org/mcp-hatchery/issues
-- Documentation: https://github.com/your-org/mcp-hatchery#readme
+- GitHub Issues: https://github.com/joe-watkins/mcp-hatchery/issues
+- Documentation: https://github.com/joe-watkins/mcp-hatchery#readme
