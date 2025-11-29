@@ -1,0 +1,16 @@
+# Exclude development and test files from npm package
+.git
+.gitignore
+.vscode
+.idea
+*.log
+node_modules
+test/
+tests/
+*.test.js
+*.spec.js
+.env
+.env.*
+!.env.example
+coverage/
+.nyc_output/

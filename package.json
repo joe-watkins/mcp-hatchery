@@ -1,0 +1,41 @@
+{
+  "name": "mcp-hatchery",
+  "version": "1.0.0",
+  "description": "CLI tool to scaffold Model Context Protocol (MCP) servers for local and remote deployment",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "mcp-hatchery": "./bin/mcp-hatchery.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "scaffold",
+    "cli",
+    "code-generator",
+    "express",
+    "server"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "axios": "^1.7.2",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "fs-extra": "^11.2.0",
+    "inquirer": "^10.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/mcp-hatchery.git"
+  }
+}
