@@ -9,7 +9,7 @@ const program = new Command();
 program
   .name('mcp-hatchery')
   .description('Scaffold Model Context Protocol (MCP) servers for local and remote deployment')
-  .version('1.3.1');
+  .version('1.3.2');
 
 program
   .command('create [project-name]')
