@@ -104,7 +104,7 @@ export async function scaffoldProject(config, analysis, targetDir) {
     },
     {
       path: 'README.md',
-      content: generateReadme(config, analysis),
+      content: generateReadme(config, analysis, targetDir),
       description: 'README.md'
     },
     {

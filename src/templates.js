@@ -1,3 +1,5 @@
+import path from 'path';
+
 /**
  * Generate package.json for the scaffolded project
  */
@@ -383,7 +385,7 @@ export const handler = async (event, context) => {
 /**
  * Generate README.md
  */
-export function generateReadme(config, analysis) {
+export function generateReadme(config, analysis, targetDir) {
   let toolsList = '';
   if (analysis.tools.length > 0) {
     toolsList = '\n## Tools\n\n' + analysis.tools.map(tool => 
@@ -406,6 +408,10 @@ export function generateReadme(config, analysis) {
 
   let localSection = '';
   if (deployment === 'local' || deployment === 'both') {
+    const scriptPath = targetDir 
+      ? path.join(targetDir, 'src', 'index.js').replace(/\\/g, '/') 
+      : `/absolute/path/to/${config.projectName}/src/index.js`;
+
     localSection = `
 ### Configure your IDE
 
@@ -416,7 +422,7 @@ Add this to your Claude Desktop MCP settings:
   "mcpServers": {
     "${config.projectName}": {
       "command": "node",
-      "args": ["/absolute/path/to/${config.projectName}/src/index.js"]
+      "args": ["${scriptPath}"]
     }
   }
 }
