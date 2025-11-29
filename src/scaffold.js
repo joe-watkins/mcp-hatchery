@@ -7,9 +7,7 @@ import {
   generateIndexFile,
   generateNetlifyFunction,
   generateReadme,
-  generateEnvExample,
   generateGitignore,
-  generateTsConfig,
   generateNetlifyConfig
 } from './templates.js';
 
@@ -30,7 +28,11 @@ export async function scaffoldProject(config, analysis, targetDir) {
 
   // Create directory structure
   await fs.ensureDir(path.join(targetDir, 'src'));
-  await fs.ensureDir(path.join(targetDir, 'netlify', 'functions'));
+  
+  // Only create netlify directory if needed
+  if (config.deployment === 'remote' || config.deployment === 'both') {
+    await fs.ensureDir(path.join(targetDir, 'netlify', 'functions'));
+  }
 
   // Generate and write files
   const files = [
@@ -40,35 +42,39 @@ export async function scaffoldProject(config, analysis, targetDir) {
       description: 'package.json'
     },
     {
-      path: 'src/tools.ts',
+      path: 'src/tools.js',
       content: generateToolDefinitions(config, analysis),
       description: 'Tool definitions'
-    },
-    {
-      path: 'src/index.ts',
+    }
+  ];
+
+  // Add local server files if needed
+  if (config.deployment === 'local' || config.deployment === 'both') {
+    files.push({
+      path: 'src/index.js',
       content: generateIndexFile(config, analysis),
       description: 'Main MCP server (stdio)'
-    },
-    {
-      path: 'netlify/functions/api.js',
-      content: generateNetlifyFunction(config),
-      description: 'Netlify Function (HTTP/SSE)'
-    },
-    {
-      path: 'netlify.toml',
-      content: generateNetlifyConfig(config),
-      description: 'Netlify configuration'
-    },
-    {
-      path: 'tsconfig.json',
-      content: JSON.stringify(generateTsConfig(), null, 2),
-      description: 'TypeScript configuration'
-    },
-    {
-      path: '.env.example',
-      content: generateEnvExample(config),
-      description: 'Environment variables template'
-    },
+    });
+  }
+
+  // Add remote server files if needed
+  if (config.deployment === 'remote' || config.deployment === 'both') {
+    files.push(
+      {
+        path: 'netlify/functions/api.js',
+        content: generateNetlifyFunction(config),
+        description: 'Netlify Function (HTTP/SSE)'
+      },
+      {
+        path: 'netlify.toml',
+        content: generateNetlifyConfig(config),
+        description: 'Netlify configuration'
+      }
+    );
+  }
+
+  // Add common files
+  files.push(
     {
       path: '.gitignore',
       content: generateGitignore(),
@@ -79,7 +85,7 @@ export async function scaffoldProject(config, analysis, targetDir) {
       content: generateReadme(config, analysis),
       description: 'README.md'
     }
-  ];
+  );
 
   // Write all files
   for (const file of files) {
@@ -91,9 +97,15 @@ export async function scaffoldProject(config, analysis, targetDir) {
   // Print summary
   console.log(chalk.cyan('\n📊 Project Summary:\n'));
   console.log(chalk.white('  Project name:'), chalk.bold(config.projectName));
-  console.log(chalk.white('  Language:'), chalk.bold('TypeScript'));
-  console.log(chalk.white('  Local transport:'), chalk.bold('stdio'));
-  console.log(chalk.white('  Remote transport:'), chalk.bold('Netlify Functions (SSE)'));
+  console.log(chalk.white('  Language:'), chalk.bold('JavaScript'));
+  
+  if (config.deployment === 'both') {
+    console.log(chalk.white('  Deployment:'), chalk.bold('Local (stdio) + Remote (Netlify)'));
+  } else if (config.deployment === 'local') {
+    console.log(chalk.white('  Deployment:'), chalk.bold('Local only (stdio)'));
+  } else {
+    console.log(chalk.white('  Deployment:'), chalk.bold('Remote only (Netlify)'));
+  }
   
   if (analysis.summary.toolCount > 0) {
     console.log(chalk.white('  Tools:'), chalk.bold(analysis.summary.toolCount));
@@ -107,12 +119,19 @@ export async function scaffoldProject(config, analysis, targetDir) {
   console.log(chalk.gray(`     cd ${path.basename(targetDir)}`));
   console.log(chalk.white('\n  2. Install dependencies:'));
   console.log(chalk.gray('     npm install'));
-  console.log(chalk.white('\n  3. Build the project:'));
-  console.log(chalk.gray('     npm run build'));
-  console.log(chalk.white('\n  4. Run locally (for Claude Desktop):'));
-  console.log(chalk.gray('     npm run dev'));
-  console.log(chalk.white('\n  5. Deploy to Netlify:'));
-  console.log(chalk.gray('     netlify deploy --prod'));
-  console.log(chalk.white('\n  6. Edit your tools:'));
-  console.log(chalk.gray('     Open src/tools.ts and customize your tools\n'));
+  
+  if (config.deployment === 'local' || config.deployment === 'both') {
+    console.log(chalk.white('\n  3. Run locally (for Claude Desktop):'));
+    console.log(chalk.gray('     npm start'));
+  }
+  
+  if (config.deployment === 'remote' || config.deployment === 'both') {
+    const stepNum = config.deployment === 'both' ? '4' : '3';
+    console.log(chalk.white(`\n  ${stepNum}. Deploy to Netlify:`));
+    console.log(chalk.gray('     Push to GitHub and connect to Netlify'));
+  }
+  
+  const editStepNum = config.deployment === 'both' ? '5' : '4';
+  console.log(chalk.white(`\n  ${editStepNum}. Edit your tools:`));
+  console.log(chalk.gray('     Open src/tools.js and customize your tools\n'));
 }

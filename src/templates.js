@@ -3,32 +3,43 @@
  */
 export function generatePackageJson(config, analysis) {
   const dependencies = {
-    '@modelcontextprotocol/sdk': '^1.0.4',
-    '@types/node': '^20.0.0',
-    'typescript': '^5.3.0',
-    'serverless-http': '^3.2.0',
-    'zod': '^3.22.4'
+    '@modelcontextprotocol/sdk': '^1.0.4'
   };
 
-  const scripts = {
-    start: 'node build/index.js',
-    build: 'tsc',
-    'build:watch': 'tsc --watch',
-    dev: 'tsc && node build/index.js'
-  };
+  // Only add serverless-http if deploying remotely
+  if (config.deployment === 'remote' || config.deployment === 'both') {
+    dependencies['serverless-http'] = '^3.2.0';
+  }
 
-  return {
+  const scripts = {};
+  
+  // Only add start/dev scripts if deploying locally
+  if (config.deployment === 'local' || config.deployment === 'both') {
+    scripts.start = 'node src/index.js';
+    scripts.dev = 'node src/index.js';
+  }
+
+  const packageJson = {
     name: config.projectName,
     version: '1.0.0',
     description: config.description,
     type: 'module',
-    main: 'build/index.js',
-    scripts,
     dependencies,
     engines: {
       node: '>=18.0.0'
     }
   };
+
+  // Only add main and scripts if there's content
+  if (config.deployment === 'local' || config.deployment === 'both') {
+    packageJson.main = 'src/index.js';
+  }
+  
+  if (Object.keys(scripts).length > 0) {
+    packageJson.scripts = scripts;
+  }
+
+  return packageJson;
 }
 
 /**
@@ -40,24 +51,31 @@ export function generateToolDefinitions(config, analysis) {
   if (analysis.tools.length > 0) {
     // Generate from analyzed tools
     toolsList = analysis.tools.map(tool => {
-      const schemaFields = Object.keys(tool.inputSchema).length > 0
+      const schemaProperties = Object.keys(tool.inputSchema).length > 0
         ? Object.entries(tool.inputSchema).map(([key, type]) => {
-            return `      ${key}: z.${type}().describe('${key}')`;
+            return `        ${key}: {\n          type: '${type}',\n          description: '${key}'\n        }`;
           }).join(',\n')
-        : '      // No input parameters';
+        : '';
+      
+      const requiredFields = Object.keys(tool.inputSchema).length > 0
+        ? `\n      required: [${Object.keys(tool.inputSchema).map(k => `'${k}'`).join(', ')}]`
+        : '';
       
       return `  {
     name: '${tool.name}',
     description: '${tool.description}',
-    inputSchema: z.object({
-${schemaFields}
-    }),
-    handler: async (args: any) => {
+    inputSchema: {
+      type: 'object',
+      properties: {
+${schemaProperties}
+      }${requiredFields}
+    },
+    handler: async (args) => {
       // TODO: Implement ${tool.name} logic
       return {
         content: [
           {
-            type: 'text' as const,
+            type: 'text',
             text: JSON.stringify(args, null, 2)
           }
         ]
@@ -70,14 +88,21 @@ ${schemaFields}
     toolsList = `  {
     name: 'echo',
     description: 'Echoes back the provided message',
-    inputSchema: z.object({
-      message: z.string().describe('Message to echo back')
-    }),
-    handler: async (args: { message: string }) => {
+    inputSchema: {
+      type: 'object',
+      properties: {
+        message: {
+          type: 'string',
+          description: 'Message to echo back'
+        }
+      },
+      required: ['message']
+    },
+    handler: async (args) => {
       return {
         content: [
           {
-            type: 'text' as const,
+            type: 'text',
             text: \`Echo: \${args.message}\`
           }
         ]
@@ -87,14 +112,21 @@ ${schemaFields}
   {
     name: 'get-greeting',
     description: 'Returns a personalized greeting',
-    inputSchema: z.object({
-      name: z.string().describe('Name to greet')
-    }),
-    handler: async (args: { name: string }) => {
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Name to greet'
+        }
+      },
+      required: ['name']
+    },
+    handler: async (args) => {
       return {
         content: [
           {
-            type: 'text' as const,
+            type: 'text',
             text: \`Hello, \${args.name}! Welcome to ${config.projectName}.\`
           }
         ]
@@ -103,28 +135,17 @@ ${schemaFields}
   }`;
   }
 
-  return `import { z } from 'zod';
-
-export interface ToolDefinition {
-  name: string;
-  description: string;
-  inputSchema: z.ZodObject<any>;
-  handler: (args: any) => Promise<{
-    content: Array<{ type: 'text' | 'image' | 'resource'; text?: string; [key: string]: any }>;
-  }>;
-}
-
-/**
+  return `/**
  * Tool definitions for ${config.projectName}
  */
-export const tools: ToolDefinition[] = [
+export const tools = [
 ${toolsList}
 ];
 `;
 }
 
 /**
- * Generate the main server (index.ts for local stdio use)
+ * Generate the main server (index.js for local stdio use)
  */
 export function generateIndexFile(config, analysis) {
   return `#!/usr/bin/env node
@@ -156,7 +177,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: tools.map(tool => ({
       name: tool.name,
       description: tool.description,
-      inputSchema: tool.inputSchema.shape
+      inputSchema: tool.inputSchema
     }))
   };
 });
@@ -170,12 +191,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (!tool) {
     throw new Error(\`Unknown tool: \${request.params.name}\`);
   }
-
-  // Validate arguments against schema
-  const validatedArgs = tool.inputSchema.parse(request.params.arguments);
   
   // Execute tool handler
-  return await tool.handler(validatedArgs);
+  return await tool.handler(request.params.arguments);
 });
 
 /**
@@ -202,7 +220,7 @@ export function generateNetlifyFunction(config) {
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { tools } from '../../build/tools.js';
+import { tools } from '../../src/tools.js';
 
 /**
  * Create MCP server for HTTP/SSE transport (Netlify Functions)
@@ -226,7 +244,7 @@ const createServer = () => {
       tools: tools.map(tool => ({
         name: tool.name,
         description: tool.description,
-        inputSchema: tool.inputSchema.shape
+        inputSchema: tool.inputSchema
       }))
     };
   });
@@ -239,8 +257,7 @@ const createServer = () => {
       throw new Error(\`Unknown tool: \${request.params.name}\`);
     }
 
-    const validatedArgs = tool.inputSchema.parse(request.params.arguments);
-    return await tool.handler(validatedArgs);
+    return await tool.handler(request.params.arguments);
   });
 
   return server;
@@ -317,34 +334,21 @@ export function generateReadme(config, analysis) {
     ).join('\n');
   }
 
-  return `# ${config.projectName}
+  const deployment = config.deployment || 'both';
+  
+  let description = 'A Model Context Protocol (MCP) server';
+  if (deployment === 'both') {
+    description += ' that works both locally (stdio) and remotely (Netlify Functions).';
+  } else if (deployment === 'local') {
+    description += ' for local use (stdio transport).';
+  } else {
+    description += ' for remote deployment (Netlify Functions).';
+  }
 
-${config.description}
-
-A Model Context Protocol (MCP) server that works both locally (stdio) and remotely (Netlify Functions).
-
-## Installation
-
-\`\`\`bash
-npm install
-\`\`\`
-
-## Build
-
-\`\`\`bash
-npm run build
-\`\`\`
-${toolsList}
-
-## Local Development
-
-Run locally with stdio transport (for Claude Desktop):
-
-\`\`\`bash
-npm run dev
-\`\`\`
-
-### Configuring Claude Desktop
+  let localSection = '';
+  if (deployment === 'local' || deployment === 'both') {
+    localSection = `
+### Configure your IDE
 
 Add this to your Claude Desktop MCP settings:
 
@@ -353,30 +357,22 @@ Add this to your Claude Desktop MCP settings:
   "mcpServers": {
     "${config.projectName}": {
       "command": "node",
-      "args": ["/absolute/path/to/${config.projectName}/build/index.js"]
+      "args": ["/absolute/path/to/${config.projectName}/src/index.js"]
     }
   }
 }
 \`\`\`
+`;
+  }
 
+  let remoteSection = '';
+  if (deployment === 'remote' || deployment === 'both') {
+    remoteSection = `
 ## Deploy to Netlify
 
 This project is configured to deploy as a Netlify Function.
 
-### Option 1: Deploy with Netlify CLI
-
-\`\`\`bash
-# Install Netlify CLI
-npm install -g netlify-cli
-
-# Login to Netlify
-netlify login
-
-# Deploy
-netlify deploy --prod
-\`\`\`
-
-### Option 2: Deploy via GitHub
+### Deploy via GitHub
 
 1. Push this repository to GitHub
 2. Connect it to Netlify via the Netlify dashboard
@@ -384,34 +380,66 @@ netlify deploy --prod
 
 ### Using the Remote Server
 
-Once deployed, your MCP server will be available at:
+Once deployed, configure your Claude Desktop MCP settings to use the remote server:
 
-- **SSE Endpoint**: \`https://your-site.netlify.app/.netlify/functions/api/sse\`
-- **Message Endpoint**: \`https://your-site.netlify.app/.netlify/functions/api/message\`
-- **Health Check**: \`https://your-site.netlify.app/.netlify/functions/api\`
+\`\`\`json
+{
+  "mcpServers": {
+    "${config.projectName}": {
+      "command": "npx",
+      "args": ["mcp-remote@next", "https://your-site.netlify.app/mcp"]
+    }
+  }
+}
+\`\`\`
 
-## Project Structure
+Replace \`your-site.netlify.app\` with your actual Netlify URL.
 
-- \`src/index.ts\` - Main MCP server with stdio transport (local use)
-- \`src/tools.ts\` - Tool definitions and handlers
+#### Available Endpoints:
+
+- **MCP Endpoint**: \`https://your-site.netlify.app/mcp\`
+- **Health Check**: \`https://your-site.netlify.app/mcp\`
+`;
+  }
+
+  let projectStructure = '## Project Structure\n\n';
+  if (deployment === 'local') {
+    projectStructure += `- \`src/index.js\` - Main MCP server with stdio transport
+- \`src/tools.js\` - Tool definitions and handlers`;
+  } else if (deployment === 'remote') {
+    projectStructure += `- \`src/tools.js\` - Tool definitions and handlers
+- \`netlify/functions/api.js\` - Netlify Function wrapper with SSE transport
+- \`netlify.toml\` - Netlify configuration`;
+  } else {
+    projectStructure += `- \`src/index.js\` - Main MCP server with stdio transport (local use)
+- \`src/tools.js\` - Tool definitions and handlers
 - \`netlify/functions/api.js\` - Netlify Function wrapper with SSE transport (remote use)
-- \`build/\` - Compiled JavaScript output
-- \`netlify.toml\` - Netlify configuration
+- \`netlify.toml\` - Netlify configuration`;
+  }
+
+  return `# ${config.projectName}
+
+${config.description}
+
+${description}
+
+## Installation
+
+\`\`\`bash
+npm install
+\`\`\`
+${toolsList}
+${localSection}${remoteSection}
+${projectStructure}
 
 ## Adding New Tools
 
-Edit \`src/tools.ts\` to add new tool definitions. Each tool needs:
+Edit \`src/tools.js\` to add new tool definitions. Each tool needs:
 
 - **name**: Unique identifier for the tool
 - **description**: What the tool does
-- **inputSchema**: Zod schema defining the input parameters
+- **inputSchema**: JSON Schema object defining the input parameters
 - **handler**: Async function that implements the tool logic
-
-After adding tools, rebuild:
-
-\`\`\`bash
-npm run build
-\`\`\`
 
 ## Learn More
 
@@ -439,7 +467,6 @@ export function generateEnvExample(config) {
 export function generateGitignore() {
   return `node_modules/
 dist/
-build/
 .env
 .env.local
 *.log
@@ -449,45 +476,20 @@ build/
 }
 
 /**
- * Generate TypeScript configuration
- */
-export function generateTsConfig() {
-  return {
-    compilerOptions: {
-      target: 'ES2022',
-      module: 'ES2022',
-      lib: ['ES2022'],
-      moduleResolution: 'node',
-      esModuleInterop: true,
-      allowSyntheticDefaultImports: true,
-      strict: true,
-      skipLibCheck: true,
-      forceConsistentCasingInFileNames: true,
-      resolveJsonModule: true,
-      outDir: './build',
-      rootDir: './src',
-      declaration: true
-    },
-    include: ['src/**/*'],
-    exclude: ['node_modules', 'build', 'netlify']
-  };
-}
-
-/**
  * Generate Netlify configuration (netlify.toml)
  */
 export function generateNetlifyConfig(config) {
   return `[build]
-  command = "npm install && npm run build"
+  command = "npm install"
   functions = "netlify/functions"
   publish = "."
 
 [functions]
   node_bundler = "esbuild"
-  included_files = ["build/**"]
+  included_files = ["src/**"]
 
 [[redirects]]
-  from = "/api/*"
+  from = "/mcp/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
 `;

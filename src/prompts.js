@@ -19,6 +19,17 @@ export async function promptProjectConfig(initialProjectName) {
       name: 'description',
       message: 'Project description:',
       default: 'My MCP server'
+    },
+    {
+      type: 'list',
+      name: 'deployment',
+      message: 'Deployment target:',
+      choices: [
+        { name: 'Both (Local + Remote)', value: 'both' },
+        { name: 'Local only (stdio)', value: 'local' },
+        { name: 'Remote only (Netlify)', value: 'remote' }
+      ],
+      default: 'both'
     }
   ]);
 
