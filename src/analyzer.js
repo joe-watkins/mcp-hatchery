@@ -1,8 +1,5 @@
 import fs from 'fs-extra';
 import path from 'path';
-import axios from 'axios';
-import { execSync } from 'child_process';
-import os from 'os';
 
 /**
  * Analyzes an MCP server source code to extract tools, resources, and prompts
@@ -27,26 +24,6 @@ export class MCPAnalyzer {
     }
 
     return this.getAnalysisResult();
-  }
-
-  /**
-   * Clone and analyze GitHub repository
-   */
-  async analyzeGithub(repoUrl) {
-    const tempDir = path.join(os.tmpdir(), `mcp-hatchery-${Date.now()}`);
-    
-    try {
-      console.log(`Cloning repository to ${tempDir}...`);
-      execSync(`git clone ${repoUrl} "${tempDir}"`, { stdio: 'inherit' });
-      
-      this.sourcePath = tempDir;
-      await this.analyzeLocal();
-      
-      return this.getAnalysisResult();
-    } finally {
-      // Clean up temp directory
-      await fs.remove(tempDir);
-    }
   }
 
   /**
@@ -213,11 +190,8 @@ export class MCPAnalyzer {
  * Analyze an MCP server from various sources
  */
 export async function analyzeServer(config) {
-  const analyzer = new MCPAnalyzer(config.sourcePath);
-
-  if (config.sourceType === 'github') {
-    return await analyzer.analyzeGithub(config.githubUrl);
-  } else if (config.sourceType === 'local') {
+  if (config.sourceType === 'local') {
+    const analyzer = new MCPAnalyzer(config.sourcePath);
     return await analyzer.analyzeLocal();
   }
 

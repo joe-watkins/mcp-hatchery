@@ -3,49 +3,26 @@
  */
 export function generatePackageJson(config, analysis) {
   const dependencies = {
-    '@modelcontextprotocol/sdk': '^1.0.4'
+    '@modelcontextprotocol/sdk': '^1.0.4',
+    '@types/node': '^20.0.0',
+    'typescript': '^5.3.0',
+    'serverless-http': '^3.2.0',
+    'zod': '^3.22.4'
   };
 
-  if (config.transports.includes('http')) {
-    dependencies.express = '^4.19.2';
-    dependencies.cors = '^2.8.5';
-  }
-
-  // No additional dependencies needed for deployment platforms
-  // Both Netlify and Vercel can run standard Express servers
-
-  const scripts = {};
-  
-  if (config.language === 'typescript') {
-    dependencies['@types/node'] = '^20.0.0';
-    dependencies['@types/express'] = '^4.17.21';
-    dependencies['typescript'] = '^5.3.0';
-    dependencies['tsx'] = '^4.7.0';
-    
-    if (config.transports.includes('stdio')) {
-      scripts.start = 'tsx src/stdio.ts';
-    }
-    if (config.transports.includes('http')) {
-      scripts['start:http'] = 'tsx src/http.ts';
-      scripts.dev = 'tsx watch src/http.ts';
-    }
-    scripts.build = 'tsc';
-  } else {
-    if (config.transports.includes('stdio')) {
-      scripts.start = 'node src/stdio.js';
-    }
-    if (config.transports.includes('http')) {
-      scripts['start:http'] = 'node src/http.js';
-      scripts.dev = 'node --watch src/http.js';
-    }
-  }
+  const scripts = {
+    start: 'node build/index.js',
+    build: 'tsc',
+    'build:watch': 'tsc --watch',
+    dev: 'tsc && node build/index.js'
+  };
 
   return {
     name: config.projectName,
     version: '1.0.0',
     description: config.description,
     type: 'module',
-    main: config.transports.includes('stdio') ? 'src/stdio.js' : 'src/http.js',
+    main: 'build/index.js',
     scripts,
     dependencies,
     engines: {
@@ -55,216 +32,277 @@ export function generatePackageJson(config, analysis) {
 }
 
 /**
- * Generate the main server factory with MCP server configuration
+ * Generate tool definitions file
  */
-export function generateServerFactory(config, analysis) {
-  const ext = config.language === 'typescript' ? 'ts' : 'js';
-  const importZod = config.language === 'typescript' ? "import { z } from 'zod';" : "import { z } from 'zod/v4';";
-  
-  let toolRegistrations = '';
+export function generateToolDefinitions(config, analysis) {
+  let toolsList = '';
   
   if (analysis.tools.length > 0) {
-    // Generate tool registrations from analyzed tools
-    toolRegistrations = analysis.tools.map(tool => {
+    // Generate from analyzed tools
+    toolsList = analysis.tools.map(tool => {
       const schemaFields = Object.keys(tool.inputSchema).length > 0
         ? Object.entries(tool.inputSchema).map(([key, type]) => {
-            return `    ${key}: z.${type}()`;
+            return `      ${key}: z.${type}().describe('${key}')`;
           }).join(',\n')
-        : '    // No input parameters';
+        : '      // No input parameters';
       
-      return `  server.registerTool(
-    '${tool.name}',
-    {
-      title: '${tool.name.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}',
-      description: '${tool.description}',
-      inputSchema: {
+      return `  {
+    name: '${tool.name}',
+    description: '${tool.description}',
+    inputSchema: z.object({
 ${schemaFields}
-      }
-    },
-    async (args) => {
+    }),
+    handler: async (args: any) => {
       // TODO: Implement ${tool.name} logic
       return {
         content: [
           {
-            type: 'text',
-            text: JSON.stringify(args)
+            type: 'text' as const,
+            text: JSON.stringify(args, null, 2)
           }
         ]
       };
     }
-  );`;
-    }).join('\n\n');
+  }`;
+    }).join(',\n');
   } else {
-    // Generate a sample tool for bare-bones projects
-    toolRegistrations = `  // Example tool - replace with your own
-  server.registerTool(
-    'echo',
-    {
-      title: 'Echo Tool',
-      description: 'Echoes back the provided message',
-      inputSchema: {
-        message: z.string().describe('Message to echo')
-      }
-    },
-    async ({ message }) => {
+    // Generate sample tools
+    toolsList = `  {
+    name: 'echo',
+    description: 'Echoes back the provided message',
+    inputSchema: z.object({
+      message: z.string().describe('Message to echo back')
+    }),
+    handler: async (args: { message: string }) => {
       return {
         content: [
           {
-            type: 'text',
-            text: \`Echo: \${message}\`
+            type: 'text' as const,
+            text: \`Echo: \${args.message}\`
           }
         ]
       };
     }
-  );`;
-  }
-
-  let resourceRegistrations = '';
-  if (analysis.resources.length > 0) {
-    resourceRegistrations = '\n\n' + analysis.resources.map(resource => {
-      return `  server.registerResource(
-    '${resource.name}',
-    '${resource.uri}',
-    {
-      title: '${resource.name}',
-      mimeType: 'text/plain'
-    },
-    async (uri) => {
-      // TODO: Implement ${resource.name} resource
+  },
+  {
+    name: 'get-greeting',
+    description: 'Returns a personalized greeting',
+    inputSchema: z.object({
+      name: z.string().describe('Name to greet')
+    }),
+    handler: async (args: { name: string }) => {
       return {
-        contents: [
+        content: [
           {
-            uri: uri.href,
-            text: 'Resource content here'
+            type: 'text' as const,
+            text: \`Hello, \${args.name}! Welcome to ${config.projectName}.\`
           }
         ]
       };
     }
-  );`;
-    }).join('\n\n');
+  }`;
   }
 
-  return `import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-${importZod}
+  return `import { z } from 'zod';
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: z.ZodObject<any>;
+  handler: (args: any) => Promise<{
+    content: Array<{ type: 'text' | 'image' | 'resource'; text?: string; [key: string]: any }>;
+  }>;
+}
 
 /**
- * Create and configure the MCP server
+ * Tool definitions for ${config.projectName}
  */
-export function createMCPServer() {
-  const server = new McpServer({
+export const tools: ToolDefinition[] = [
+${toolsList}
+];
+`;
+}
+
+/**
+ * Generate the main server (index.ts for local stdio use)
+ */
+export function generateIndexFile(config, analysis) {
+  return `#!/usr/bin/env node
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { tools } from './tools.js';
+
+/**
+ * Create and configure the MCP server for local (stdio) use
+ */
+const server = new Server(
+  {
     name: '${config.projectName}',
-    version: '1.0.0'
-  }, {
+    version: '1.0.0',
+  },
+  {
     capabilities: {
       tools: {},
-      resources: {}
+    },
+  }
+);
+
+/**
+ * Handler for listing available tools
+ */
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: tools.map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema.shape
+    }))
+  };
+});
+
+/**
+ * Handler for calling tools
+ */
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const tool = tools.find(t => t.name === request.params.name);
+  
+  if (!tool) {
+    throw new Error(\`Unknown tool: \${request.params.name}\`);
+  }
+
+  // Validate arguments against schema
+  const validatedArgs = tool.inputSchema.parse(request.params.arguments);
+  
+  // Execute tool handler
+  return await tool.handler(validatedArgs);
+});
+
+/**
+ * Start the server with stdio transport
+ */
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error('${config.projectName} MCP server running on stdio');
+}
+
+main().catch((error) => {
+  console.error('Fatal error in main():', error);
+  process.exit(1);
+});
+`;
+}
+
+/**
+ * Generate Netlify Function handler (api.js)
+ */
+export function generateNetlifyFunction(config) {
+  return `import serverless from 'serverless-http';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { tools } from '../../build/tools.js';
+
+/**
+ * Create MCP server for HTTP/SSE transport (Netlify Functions)
+ */
+const createServer = () => {
+  const server = new Server(
+    {
+      name: '${config.projectName}',
+      version: '1.0.0',
+    },
+    {
+      capabilities: {
+        tools: {},
+      },
     }
+  );
+
+  // Handler for listing available tools
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    return {
+      tools: tools.map(tool => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema.shape
+      }))
+    };
   });
 
-${toolRegistrations}${resourceRegistrations}
+  // Handler for calling tools
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const tool = tools.find(t => t.name === request.params.name);
+    
+    if (!tool) {
+      throw new Error(\`Unknown tool: \${request.params.name}\`);
+    }
+
+    const validatedArgs = tool.inputSchema.parse(request.params.arguments);
+    return await tool.handler(validatedArgs);
+  });
 
   return server;
-}
-`;
-}
+};
 
 /**
- * Generate stdio entry point
+ * Netlify Function handler
+ * Supports both SSE transport for MCP and basic HTTP requests
  */
-export function generateStdioEntry(config) {
-  const ext = config.language === 'typescript' ? 'ts' : 'js';
-  
-  return `#!/usr/bin/env node
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { createMCPServer } from './server.${ext}';
+export const handler = async (event, context) => {
+  // Handle SSE connection for MCP
+  if (event.path === '/sse' || event.httpMethod === 'GET') {
+    const server = createServer();
+    const transport = new SSEServerTransport('/message', server);
+    
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+      body: await transport.start(),
+    };
+  }
 
-/**
- * Start the MCP server with stdio transport
- * This allows the server to communicate with MCP clients like Claude Desktop
- */
-async function main() {
-  const server = createMCPServer();
-  const transport = new StdioServerTransport();
-  
-  await server.connect(transport);
-  
-  console.error('MCP server running on stdio');
-}
-
-main().catch((error) => {
-  console.error('Fatal error in main():', error);
-  process.exit(1);
-});
-`;
-}
-
-/**
- * Generate HTTP entry point with Express
- */
-export function generateHttpEntry(config) {
-  const ext = config.language === 'typescript' ? 'ts' : 'js';
-  
-  return `#!/usr/bin/env node
-import express from 'express';
-import cors from 'cors';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { createMCPServer } from './server.${ext}';
-
-const PORT = process.env.PORT || ${config.port || 3000};
-
-/**
- * Start the MCP server with HTTP transport
- * This allows the server to be accessed remotely via HTTP
- */
-async function main() {
-  const app = express();
-  
-  // Middleware
-  app.use(cors({
-    origin: '*',
-    exposedHeaders: ['Mcp-Session-Id']
-  }));
-  app.use(express.json());
-
-  // Health check endpoint
-  app.get('/health', (req, res) => {
-    res.json({ status: 'healthy', timestamp: new Date().toISOString() });
-  });
-
-  // Create MCP server instance (can be reused across requests)
-  const mcpServer = createMCPServer();
-
-  // MCP endpoint using StreamableHTTPServerTransport
-  app.post('/mcp', async (req, res) => {
+  // Handle message endpoint for MCP
+  if (event.path === '/message' && event.httpMethod === 'POST') {
+    const server = createServer();
+    const transport = new SSEServerTransport('/message', server);
+    
     try {
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdHeader: 'mcp-session-id'
-      });
-
-      // Handle the request through the transport
-      await transport.handleRequest(req, res, async (serverTransport) => {
-        await mcpServer.connect(serverTransport);
-      });
+      const result = await transport.handleMessage(JSON.parse(event.body));
+      return {
+        statusCode: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(result),
+      };
     } catch (error) {
-      console.error('Error handling MCP request:', error);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Internal server error' });
-      }
+      return {
+        statusCode: 500,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ error: error.message }),
+      };
     }
-  });
+  }
 
-  // Start server
-  app.listen(PORT, () => {
-    console.log(\`MCP HTTP server listening on port \${PORT}\`);
-    console.log(\`Health check: http://localhost:\${PORT}/health\`);
-    console.log(\`MCP endpoint: http://localhost:\${PORT}/mcp\`);
-  });
-}
-
-main().catch((error) => {
-  console.error('Fatal error in main():', error);
-  process.exit(1);
-});
+  // Health check
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: '${config.projectName}',
+      version: '1.0.0',
+      status: 'healthy',
+      endpoints: {
+        sse: '/sse',
+        message: '/message'
+      }
+    }),
+  };
+};
 `;
 }
 
@@ -272,10 +310,6 @@ main().catch((error) => {
  * Generate README.md
  */
 export function generateReadme(config, analysis) {
-  const hasStdio = config.transports.includes('stdio');
-  const hasHttp = config.transports.includes('http');
-  const ext = config.language === 'typescript' ? 'ts' : 'js';
-  
   let toolsList = '';
   if (analysis.tools.length > 0) {
     toolsList = '\n## Tools\n\n' + analysis.tools.map(tool => 
@@ -283,164 +317,107 @@ export function generateReadme(config, analysis) {
     ).join('\n');
   }
 
-  let stdioInstructions = '';
-  if (hasStdio) {
-    stdioInstructions = `
-## Running with Stdio Transport
-
-For use with MCP clients like Claude Desktop:
-
-\`\`\`bash
-npm start
-\`\`\`
-
-### Configuring Claude Desktop
-
-Add this to your Claude Desktop configuration:
-
-\`\`\`json
-{
-  "mcpServers": {
-    "${config.projectName}": {
-      "command": "node",
-      "args": ["${process.cwd()}/src/stdio.${ext}"]
-    }
-  }
-}
-\`\`\`
-`;
-  }
-
-  let httpInstructions = '';
-  if (hasHttp) {
-    const deploymentSection = config.deployment === 'netlify' 
-      ? `
-### Deploying to Netlify
-
-This project uses Netlify Functions with a wrapped Express server.
-
-1. Install the Netlify CLI:
-\`\`\`bash
-npm install -g netlify-cli
-\`\`\`
-
-2. Login to Netlify:
-\`\`\`bash
-netlify login
-\`\`\`
-
-3. Deploy to Netlify:
-\`\`\`bash
-netlify deploy --prod
-\`\`\`
-
-Your MCP server will be available at: \`https://your-site.netlify.app/mcp\`
-
-#### Environment Variables
-
-Set environment variables in the Netlify dashboard under Site configuration > Environment variables.
-`
-      : config.deployment === 'vercel'
-      ? `
-### Deploying to Vercel
-
-This project is configured to deploy the Express server to Vercel.
-
-1. Install the Vercel CLI:
-\`\`\`bash
-npm install -g vercel
-\`\`\`
-
-2. Deploy to Vercel:
-\`\`\`bash
-vercel
-\`\`\`
-
-3. For production:
-\`\`\`bash
-vercel --prod
-\`\`\`
-
-Your MCP server will be available at: \`https://your-project.vercel.app/mcp\`
-
-#### Environment Variables
-
-Set environment variables using:
-\`\`\`bash
-vercel env add VARIABLE_NAME
-\`\`\`
-
-Or configure them in the Vercel dashboard under Project Settings > Environment Variables.
-`
-      : `
-### Deployment
-
-This server can be deployed to any Node.js hosting platform:
-
-- **Railway**: Connect your GitHub repo and deploy
-- **Fly.io**: Use \`fly launch\` to create and deploy
-- **Render**: Connect your GitHub repo and deploy as a web service
-- **Heroku**: Use \`heroku create\` and \`git push heroku main\`
-- **Netlify**: Add \`netlify.toml\` and use \`netlify deploy\`
-- **Vercel**: Add \`vercel.json\` and use \`vercel deploy\`
-
-Set the environment variable \`PORT\` if required by your hosting platform.
-`;
-
-    httpInstructions = `
-## Running with HTTP Transport
-
-For remote access via HTTP:
-
-\`\`\`bash
-npm run start:http
-\`\`\`
-
-Or for development with auto-reload:
-
-\`\`\`bash
-npm run dev
-\`\`\`
-
-The server will be available at \`http://localhost:${config.port || 3000}/mcp\`
-
-### Testing the HTTP Endpoint
-
-\`\`\`bash
-curl -X POST http://localhost:${config.port || 3000}/mcp \\
-  -H "Content-Type: application/json" \\
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-\`\`\`
-${deploymentSection}
-`;
-  }
-
   return `# ${config.projectName}
 
 ${config.description}
+
+A Model Context Protocol (MCP) server that works both locally (stdio) and remotely (Netlify Functions).
 
 ## Installation
 
 \`\`\`bash
 npm install
 \`\`\`
+
+## Build
+
+\`\`\`bash
+npm run build
+\`\`\`
 ${toolsList}
-${stdioInstructions}
-${httpInstructions}
 
-## Development
+## Local Development
 
-${config.language === 'typescript' ? '### Building\n\n```bash\nnpm run build\n```\n\n' : ''}Edit the server configuration in \`src/server.${ext}\` to add your own tools, resources, and prompts.
+Run locally with stdio transport (for Claude Desktop):
+
+\`\`\`bash
+npm run dev
+\`\`\`
+
+### Configuring Claude Desktop
+
+Add this to your Claude Desktop MCP settings:
+
+\`\`\`json
+{
+  "mcpServers": {
+    "${config.projectName}": {
+      "command": "node",
+      "args": ["/absolute/path/to/${config.projectName}/build/index.js"]
+    }
+  }
+}
+\`\`\`
+
+## Deploy to Netlify
+
+This project is configured to deploy as a Netlify Function.
+
+### Option 1: Deploy with Netlify CLI
+
+\`\`\`bash
+# Install Netlify CLI
+npm install -g netlify-cli
+
+# Login to Netlify
+netlify login
+
+# Deploy
+netlify deploy --prod
+\`\`\`
+
+### Option 2: Deploy via GitHub
+
+1. Push this repository to GitHub
+2. Connect it to Netlify via the Netlify dashboard
+3. Netlify will automatically build and deploy
+
+### Using the Remote Server
+
+Once deployed, your MCP server will be available at:
+
+- **SSE Endpoint**: \`https://your-site.netlify.app/.netlify/functions/api/sse\`
+- **Message Endpoint**: \`https://your-site.netlify.app/.netlify/functions/api/message\`
+- **Health Check**: \`https://your-site.netlify.app/.netlify/functions/api\`
 
 ## Project Structure
 
-- \`src/server.${ext}\` - Main MCP server configuration and tool definitions
-${hasStdio ? `- \`src/stdio.${ext}\` - Stdio transport entry point\n` : ''}${hasHttp ? `- \`src/http.${ext}\` - HTTP transport entry point with Express server\n` : ''}${config.deployment === 'netlify' ? `- \`netlify/functions/server.${ext}\` - Netlify function wrapping Express app\n- \`netlify.toml\` - Netlify configuration\n` : ''}${config.deployment === 'vercel' ? `- \`vercel.json\` - Vercel configuration (uses src/http.${ext} directly)\n` : ''}
+- \`src/index.ts\` - Main MCP server with stdio transport (local use)
+- \`src/tools.ts\` - Tool definitions and handlers
+- \`netlify/functions/api.js\` - Netlify Function wrapper with SSE transport (remote use)
+- \`build/\` - Compiled JavaScript output
+- \`netlify.toml\` - Netlify configuration
+
+## Adding New Tools
+
+Edit \`src/tools.ts\` to add new tool definitions. Each tool needs:
+
+- **name**: Unique identifier for the tool
+- **description**: What the tool does
+- **inputSchema**: Zod schema defining the input parameters
+- **handler**: Async function that implements the tool logic
+
+After adding tools, rebuild:
+
+\`\`\`bash
+npm run build
+\`\`\`
 
 ## Learn More
 
 - [Model Context Protocol Documentation](https://modelcontextprotocol.io/)
 - [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
+- [Netlify Functions](https://docs.netlify.com/functions/overview/)
 `;
 }
 
@@ -448,15 +425,12 @@ ${hasStdio ? `- \`src/stdio.${ext}\` - Stdio transport entry point\n` : ''}${has
  * Generate .env.example
  */
 export function generateEnvExample(config) {
-  let content = '# Environment variables\n\n';
-  
-  if (config.transports.includes('http')) {
-    content += `PORT=${config.port || 3000}\n`;
-  }
-  
-  content += '\n# Add your environment variables here\n';
-  
-  return content;
+  return `# Environment variables
+
+# Add your environment variables here
+# API_KEY=your-api-key
+# DATABASE_URL=your-database-url
+`;
 }
 
 /**
@@ -470,6 +444,7 @@ build/
 .env.local
 *.log
 .DS_Store
+.netlify/
 `;
 }
 
@@ -489,12 +464,12 @@ export function generateTsConfig() {
       skipLibCheck: true,
       forceConsistentCasingInFileNames: true,
       resolveJsonModule: true,
-      outDir: './dist',
+      outDir: './build',
       rootDir: './src',
       declaration: true
     },
     include: ['src/**/*'],
-    exclude: ['node_modules', 'dist']
+    exclude: ['node_modules', 'build', 'netlify']
   };
 }
 
@@ -502,111 +477,18 @@ export function generateTsConfig() {
  * Generate Netlify configuration (netlify.toml)
  */
 export function generateNetlifyConfig(config) {
-  const startScript = config.language === 'typescript' ? 'tsx src/http.ts' : 'node src/http.js';
-  
   return `[build]
-  command = "npm install"
+  command = "npm install && npm run build"
+  functions = "netlify/functions"
   publish = "."
 
-# Redirect all traffic through the Express server
-[[redirects]]
-  from = "/*"
-  to = "/.netlify/functions/server/:splat"
-  status = 200
-  force = true
-
-# Netlify Functions configuration
 [functions]
-  directory = "netlify/functions"
   node_bundler = "esbuild"
-  
-# Define the server function
-[[functions]]
-  path = "/.netlify/functions/server"
-  included_files = ["src/**/*"]
+  included_files = ["build/**"]
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
 `;
-}
-
-/**
- * Generate Netlify Function handler that wraps Express
- */
-export function generateNetlifyFunction(config) {
-  const ext = config.language === 'typescript' ? 'ts' : 'js';
-  
-  return `import serverless from 'serverless-http';
-import express from 'express';
-import cors from 'cors';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { createMCPServer } from '../../src/server.${ext}';
-
-const app = express();
-
-// Middleware
-app.use(cors({
-  origin: '*',
-  exposedHeaders: ['Mcp-Session-Id']
-}));
-app.use(express.json());
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
-});
-
-// Create MCP server instance
-const mcpServer = createMCPServer();
-
-// MCP endpoint
-app.post('/mcp', async (req, res) => {
-  try {
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdHeader: 'mcp-session-id'
-    });
-
-    await transport.handleRequest(req, res, async (serverTransport) => {
-      await mcpServer.connect(serverTransport);
-    });
-  } catch (error) {
-    console.error('Error handling MCP request:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  }
-});
-
-// Export for Netlify Functions
-export const handler = serverless(app);
-`;
-}
-
-/**
- * Generate Vercel configuration (vercel.json)
- */
-export function generateVercelConfig(config) {
-  const ext = config.language === 'typescript' ? 'ts' : 'js';
-  
-  return {
-    version: 2,
-    builds: [
-      {
-        src: `src/http.${ext}`,
-        use: '@vercel/node'
-      }
-    ],
-    routes: [
-      {
-        src: '/(.*)',
-        dest: `src/http.${ext}`
-      }
-    ]
-  };
-}
-
-/**
- * Generate Vercel deployment note (no separate function needed)
- */
-export function generateVercelFunction(config) {
-  // Vercel will use the existing http.ts/js file directly
-  // No separate function file needed
-  return null;
 }

@@ -1,16 +1,15 @@
 # MCP Hatchery 🥚
 
-A CLI tool to scaffold Model Context Protocol (MCP) servers for both local and remote deployment.
-
-`node bin/mcp-hatchery.js create my-first-hatch`
+A CLI tool to scaffold Model Context Protocol (MCP) servers that work both locally (stdio) and remotely (Netlify Functions).
 
 ## Features
 
 - 🚀 **Quick Start**: Create MCP servers in seconds with interactive prompts
-- 🔄 **Dual Transport**: Support both stdio (local) and HTTP (remote) transports
-- 📦 **Code Analysis**: Analyze existing MCP servers and replicate their architecture
-- 🎨 **Language Support**: Generate JavaScript or TypeScript projects
-- 🌐 **Deployment Ready**: Express servers ready for Vercel, Railway, Fly.io, etc.
+- 🔄 **Dual Transport**: Supports both stdio (local) and SSE (remote via Netlify)
+- 📦 **Code Analysis**: Analyze existing local MCP servers and replicate their tool structure
+- 🎨 **TypeScript**: All projects use TypeScript with proper type definitions
+- 🌐 **Netlify Ready**: Automatically configured for Netlify Functions deployment
+- 🛠️ **Separated Tools**: Clean architecture with tools defined separately from server setup
 
 ## Installation
 
@@ -34,16 +33,13 @@ npx mcp-hatchery create my-mcp-server
 mcp-hatchery create
 ```
 
-This will guide you through an interactive setup:
+This will guide you through:
 
-1. **Project Name**: Choose a name for your server
+1. **Project Name**: Choose a name for your server (lowercase, letters, numbers, hyphens)
 2. **Description**: Brief description of what your server does
 3. **Source Type**: 
-   - Create a bare-bones MCP server
-   - Analyze an existing local MCP server
-   - Clone and analyze a GitHub MCP server
-4. **Transports**: Select stdio, HTTP, or both
-5. **Language**: JavaScript or TypeScript
+   - **Bare-bones**: Start with sample tools (echo and get-greeting)
+   - **Analyze local**: Extract tools from an existing local MCP server
 
 ### Quick Create
 
@@ -57,149 +53,130 @@ mcp-hatchery create my-server
 mcp-hatchery create my-server --directory ./projects/my-server
 ```
 
-## Project Types
-
-### Bare-Bones Server
-
-Creates a minimal MCP server with example tools. Perfect for starting from scratch.
-
-```bash
-mcp-hatchery create
-# Select "Create a bare-bones MCP server"
-```
-
-### Clone from GitHub
-
-Analyzes an existing GitHub MCP server and generates a project with similar tools and structure.
-
-```bash
-mcp-hatchery create
-# Select "Clone and analyze a GitHub MCP server"
-# Enter: https://github.com/username/mcp-server-repo
-```
-
-### Analyze Local Server
-
-Analyzes an existing local MCP server directory and generates a new project based on its tools.
-
-```bash
-mcp-hatchery create
-# Select "Analyze an existing local MCP server"
-# Enter: /path/to/existing/mcp-server
-```
-
 ## Generated Project Structure
 
-### JavaScript Project
-
 ```
 my-mcp-server/
 ├── src/
-│   ├── server.js       # Main MCP server configuration
-│   ├── stdio.js        # Stdio transport entry point
-│   └── http.js         # HTTP transport entry point
-├── package.json
-├── .env.example
-├── .gitignore
-└── README.md
-```
-
-### TypeScript Project
-
-```
-my-mcp-server/
-├── src/
-│   ├── server.ts       # Main MCP server configuration
-│   ├── stdio.ts        # Stdio transport entry point
-│   └── http.ts         # HTTP transport entry point
+│   ├── index.ts           # Main MCP server with stdio transport (local use)
+│   └── tools.ts           # Tool definitions with Zod schemas and handlers
+├── netlify/
+│   └── functions/
+│       └── api.js         # Netlify Function with SSE transport (remote use)
+├── build/                 # Compiled TypeScript output (gitignored)
 ├── package.json
 ├── tsconfig.json
+├── netlify.toml          # Netlify deployment configuration
 ├── .env.example
 ├── .gitignore
 └── README.md
 ```
 
-## Transport Options
+## How It Works
 
-### Stdio Transport
+The generated MCP server follows a clean, separated architecture:
 
-For local use with MCP clients like Claude Desktop:
+1. **Tool Definitions** (`src/tools.ts`): All tools are defined in one file with:
+   - Name and description
+   - Zod schemas for input validation
+   - Handler functions with business logic
+
+2. **Local Server** (`src/index.ts`): 
+   - Uses stdio transport for local MCP clients like Claude Desktop
+   - Imports and registers tools from `tools.ts`
+
+3. **Remote Server** (`netlify/functions/api.js`): 
+   - Netlify Function using SSE transport for remote access
+   - Imports the same tool definitions from compiled `build/tools.js`
+
+4. **Shared Logic**: Both transports use identical tool definitions, ensuring consistency between local and remote deployments.
+
+## Local Development
+
+After scaffolding your project:
 
 ```bash
-npm start
+cd my-mcp-server
+npm install
+npm run build       # Compile TypeScript
+npm run dev         # Run locally with stdio transport
 ```
 
-Configure in Claude Desktop:
+### Configuring Claude Desktop
+
+Add to your Claude Desktop MCP settings (typically at `%APPDATA%\Claude\claude_desktop_config.json` on Windows or `~/Library/Application Support/Claude/claude_desktop_config.json` on Mac):
 
 ```json
 {
   "mcpServers": {
     "my-server": {
       "command": "node",
-      "args": ["/path/to/my-mcp-server/src/stdio.js"]
+      "args": ["C:\\absolute\\path\\to\\my-mcp-server\\build\\index.js"]
     }
   }
 }
 ```
 
-### HTTP Transport
+**Note**: Use absolute paths and escape backslashes on Windows.
 
-For remote access via Express server:
+## Deploy to Netlify
+
+Your generated project is ready to deploy to Netlify:
+
+### Option 1: Netlify CLI
 
 ```bash
-npm run start:http
+npm install -g netlify-cli
+netlify login
+netlify deploy --prod
 ```
 
-Or for development with auto-reload:
+### Option 2: GitHub Integration
+
+1. Push your project to GitHub
+2. Go to [Netlify](https://app.netlify.com/)
+3. Click "Add new site" → "Import an existing project"
+4. Connect your GitHub repository
+5. Netlify will auto-detect the build settings from `netlify.toml`
+
+### Remote Endpoints
+
+Once deployed, your MCP server will be available at:
+
+- **Health Check**: `https://your-site.netlify.app/.netlify/functions/api`
+- **SSE Endpoint**: `https://your-site.netlify.app/.netlify/functions/api/sse`
+- **Message Endpoint**: `https://your-site.netlify.app/.netlify/functions/api/message`
+
+Configure remote MCP clients to use these endpoints for remote access.
+
+## Project Types
+
+### Bare-Bones Server
+
+Creates a minimal MCP server with two example tools:
+- **echo**: Echoes back a message
+- **get-greeting**: Returns a personalized greeting
+
+Perfect for starting from scratch and building your own tools.
 
 ```bash
-npm run dev
+mcp-hatchery create my-server
+# Select "Create a bare-bones MCP server"
 ```
 
-Test the endpoint:
+### Analyze Local Server
+
+Analyzes an existing local MCP server directory and extracts its tool definitions to generate a new project with similar tools.
+
+Useful for:
+- Replicating an existing MCP server's structure
+- Migrating to the Netlify-ready architecture
+- Creating variations of existing servers
 
 ```bash
-curl -X POST http://localhost:3000/mcp \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-```
-
-## Deployment
-
-Generated HTTP servers can be deployed to:
-
-- **Vercel**: Serverless functions
-- **Railway**: Full Node.js deployment
-- **Fly.io**: Global edge deployment
-- **Render**: Web services
-- **AWS Lambda**: Serverless
-- Any Node.js hosting platform
-
-## Examples
-
-### Create a Bare-Bones Server
-
-```bash
-npx mcp-hatchery create weather-server
-# Select: Bare-bones
-# Transports: Both stdio and HTTP
-# Language: JavaScript
-```
-
-### Clone from GitHub
-
-```bash
-npx mcp-hatchery create my-clone
-# Select: GitHub
-# Enter: https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem
-```
-
-### Analyze Local Project
-
-```bash
-npx mcp-hatchery create enhanced-server
-# Select: Local
-# Enter: ../existing-mcp-server
+mcp-hatchery create enhanced-server
+# Select "Analyze an existing local MCP server"
+# Enter: C:\path\to\existing\mcp-server
 ```
 
 ## Development
@@ -207,7 +184,7 @@ npx mcp-hatchery create enhanced-server
 ### Building from Source
 
 ```bash
-git clone https://github.com/your-org/mcp-hatchery.git
+git clone https://github.com/joe-watkins/mcp-hatchery.git
 cd mcp-hatchery
 npm install
 npm link
@@ -216,7 +193,11 @@ npm link
 ### Testing Locally
 
 ```bash
-node bin/mcp-hatchery.js create test-server
+mcp-hatchery create test-server
+cd test-server
+npm install
+npm run build
+npm run dev
 ```
 
 ## Requirements
@@ -224,89 +205,83 @@ node bin/mcp-hatchery.js create test-server
 - Node.js >= 18.0.0
 - npm or yarn
 
-## How It Works
+## Adding Tools to Your Generated Project
 
-1. **Interactive Prompts**: Uses Inquirer to gather project configuration
-2. **Code Analysis**: Parses existing MCP servers to extract tool definitions
-3. **Template Generation**: Creates server files with proper MCP SDK integration
-4. **Project Scaffolding**: Writes all files with correct structure and configuration
+Edit `src/tools.ts` in your generated project. Each tool needs:
+
+```typescript
+{
+  name: 'my-tool',                    // Unique identifier
+  description: 'What this tool does', // User-facing description
+  inputSchema: z.object({             // Zod schema for validation
+    param: z.string().describe('Description of param')
+  }),
+  handler: async (args) => {          // Implementation
+    return {
+      content: [{
+        type: 'text' as const,
+        text: `Result: ${args.param}`
+      }]
+    };
+  }
+}
+```
+
+After editing, rebuild:
+
+```bash
+npm run build
+```
+
+## Architecture
+
+MCP Hatchery generates servers with this architecture:
+
+### Separated Concerns
+- **Tool definitions** are isolated in `src/tools.ts`, making them easy to find, modify, and test
+- **Server setup** in `src/index.ts` handles MCP protocol details
+- **Netlify wrapper** in `netlify/functions/api.js` adapts for serverless deployment
+
+### Type Safety
+- Full TypeScript support throughout
+- Zod schemas provide runtime validation
+- Type inference from schemas to handlers
+
+### Dual Transport
+- **Stdio**: Fast local communication for Claude Desktop
+- **SSE**: Server-Sent Events for remote HTTP access via Netlify
+- Same tool logic works for both transports seamlessly
+
+### Build Process
+TypeScript compiles to `build/` directory:
+- Local stdio server imports from `build/index.js`
+- Netlify function imports from `build/tools.js`
+- Single source of truth for all tool definitions
 
 ## Learn More
 
-- [Model Context Protocol](https://modelcontextprotocol.io/)
-- [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
-- [MCP Servers Repository](https://github.com/modelcontextprotocol/servers)
-
-## Publishing to npm
-
-### First Time Setup
-
-1. Create an npm account at https://www.npmjs.com/signup (if you don't have one)
-
-2. Login to npm from the terminal:
-```bash
-npm login
-```
-
-3. Verify you're logged in:
-```bash
-npm whoami
-```
-
-### Publishing Steps
-
-1. Test your package locally first:
-```bash
-npm install
-node bin/mcp-hatchery.js create test-project
-```
-
-2. Check what will be published:
-```bash
-npm pack --dry-run
-```
-
-3. Publish to npm:
-```bash
-npm publish
-```
-
-### Publishing Updates
-
-When you make changes and want to publish a new version:
-
-```bash
-# Update version (choose one based on your changes)
-npm version patch  # 1.0.0 -> 1.0.1 (bug fixes)
-npm version minor  # 1.0.0 -> 1.1.0 (new features)
-npm version major  # 1.0.0 -> 2.0.0 (breaking changes)
-
-# Then publish
-npm publish
-```
-
-### Verify Publication
-
-- Visit: https://www.npmjs.com/package/mcp-hatchery
-- Test install: `npm install -g mcp-hatchery`
-- Test CLI: `mcp-hatchery create my-test-server`
-
-### Tips
-
-- **Scoped packages**: To publish as `@username/mcp-hatchery`, update package name and use `npm publish --access public`
-- **Beta versions**: Use `npm publish --tag beta` for pre-release versions
-- **Unpublish**: Within 72 hours, you can unpublish with `npm unpublish mcp-hatchery@version`
+- [Model Context Protocol](https://modelcontextprotocol.io/) - Official MCP documentation
+- [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk) - SDK reference
+- [MCP Servers Repository](https://github.com/modelcontextprotocol/servers) - Example MCP servers
+- [Netlify Functions](https://docs.netlify.com/functions/overview/) - Serverless deployment docs
+- [Zod](https://zod.dev/) - TypeScript-first schema validation
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-MIT
+MIT License - see LICENSE file for details
 
 ## Support
 
-For issues and questions:
-- GitHub Issues: https://github.com/joe-watkins/mcp-hatchery/issues
-- Documentation: https://github.com/joe-watkins/mcp-hatchery#readme
+- **Issues**: [GitHub Issues](https://github.com/joe-watkins/mcp-hatchery/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/joe-watkins/mcp-hatchery/discussions)
+- **Documentation**: [README.md](https://github.com/joe-watkins/mcp-hatchery#readme)
