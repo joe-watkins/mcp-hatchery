@@ -16,8 +16,10 @@
     "scaffold",
     "cli",
     "code-generator",
-    "express",
-    "server"
+    "netlify",
+    "typescript",
+    "zod",
+    "serverless"
   ],
   "author": "Joe Watkins",
   "license": "MIT",
