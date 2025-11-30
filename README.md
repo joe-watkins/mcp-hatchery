@@ -8,16 +8,16 @@ A CLI tool to scaffold Model Context Protocol (MCP) servers with local (stdio) a
 npm install -g mcp-hatchery
 ```
 
-Or use directly with npx:
-
-```bash
-npx mcp-hatchery create my-mcp-server
-```
-
 ## Usage
 
 ```bash
 mcp-hatchery create my-server
+```
+
+Or use directly with npx:
+
+```bash
+npx mcp-hatchery create my-mcp-server
 ```
 
 You'll be prompted for a project name and description. The tool generates a complete MCP server with example tools ready for customization.
@@ -36,15 +36,6 @@ my-mcp-server/
 ├── tsconfig.json
 ├── netlify.toml
 └── README.md
-```
-
-## Local Development
-
-```bash
-cd my-mcp-server
-npm install
-npm run build
-npm run dev
 ```
 
 ### IDE Configuration
