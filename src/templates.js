@@ -69,70 +69,155 @@ ${schemaProperties}
     },
     handler: async (args) => {
       // TODO: Implement ${tool.name} logic
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(args, null, 2)
-          }
-        ]
-      };
+      return textResponse(JSON.stringify(args, null, 2));
     }
   }`;
     }).join(',\n');
   } else {
-    // Generate sample tools
+    // Generate sample data-driven tools
     toolsList = `  {
     name: 'echo',
-    description: 'Echoes back the provided message',
+    description: 'Echoes back a message. Use a preset key (helloWorld, welcome, goodbye) or provide a custom message.',
     inputSchema: {
       type: 'object',
       properties: {
         message: {
           type: 'string',
-          description: 'Message to echo back'
+          description: 'Message to echo back, or a preset key (helloWorld, welcome, goodbye)'
         }
       },
       required: ['message']
     },
     handler: async (args) => {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: \`Echo: \${args.message}\`
-          }
-        ]
-      };
+      const presetMessage = data.echoMessages[args.message];
+      const outputMessage = presetMessage || args.message;
+      return textResponse(\`Echo: \${outputMessage}\`);
     }
   },
   {
     name: 'get-greeting',
-    description: 'Returns a personalized greeting',
+    description: 'Returns a personalized greeting. Styles: default, morning, evening, formal, casual.',
     inputSchema: {
       type: 'object',
       properties: {
         name: {
           type: 'string',
           description: 'Name to greet'
+        },
+        style: {
+          type: 'string',
+          description: 'Greeting style (default, morning, evening, formal, casual)',
+          enum: ['default', 'morning', 'evening', 'formal', 'casual']
         }
       },
       required: ['name']
     },
     handler: async (args) => {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: \`Hello, \${args.name}! Welcome to ${config.projectName}.\`
-          }
-        ]
-      };
+      const style = args.style || 'default';
+      const template = data.greetings[style] || data.greetings.default;
+      const greeting = template.replace('{name}', args.name);
+      return textResponse(greeting);
+    }
+  },
+  {
+    name: 'list-items',
+    description: 'Lists all items from the data source, optionally filtered by category.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        category: {
+          type: 'string',
+          description: 'Filter by category (widgets, gadgets, tools, components)',
+          enum: ['widgets', 'gadgets', 'tools', 'components']
+        }
+      },
+      required: []
+    },
+    handler: async (args) => {
+      let items = data.items;
+      if (args.category) {
+        items = items.filter(item => item.category === args.category);
+      }
+      const itemList = items.map(item => 
+        \`• \${item.name} (\${item.category}): \${item.description}\`
+      ).join('\\n');
+      return textResponse(
+        items.length > 0 
+          ? \`Found \${items.length} item(s):\\n\\n\${itemList}\`
+          : 'No items found.'
+      );
+    }
+  },
+  {
+    name: 'get-item',
+    description: 'Gets detailed information about a specific item by ID or name.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Item ID (e.g., item-001) or name to search for'
+        }
+      },
+      required: ['query']
+    },
+    handler: async (args) => {
+      const query = args.query.toLowerCase();
+      const item = data.items.find(i => 
+        i.id.toLowerCase() === query || 
+        i.name.toLowerCase().includes(query)
+      );
+      if (!item) {
+        return textResponse(\`No item found matching "\${args.query}".\`);
+      }
+      return textResponse(
+        \`**\${item.name}** (\${item.id})\\n\\nCategory: \${item.category}\\nDescription: \${item.description}\\nTags: \${item.tags.join(', ')}\`
+      );
+    }
+  },
+  {
+    name: 'list-categories',
+    description: 'Lists all available categories.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: []
+    },
+    handler: async () => {
+      return textResponse(
+        \`Available categories:\\n\\n\${data.categories.map(c => \`• \${c}\`).join('\\n')}\`
+      );
+    }
+  },
+  {
+    name: 'get-server-info',
+    description: 'Returns information about this MCP server.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: []
+    },
+    handler: async () => {
+      const info = data.serverInfo;
+      return textResponse(\`**\${info.name}** v\${info.version}\\n\\n\${info.description}\`);
     }
   }`;
   }
 
-  return `/**
+  return `// Import content.json directly - works with bundlers (esbuild, webpack) and Node.js
+// This approach is compatible with Netlify Functions bundling
+import data from '../data/content.json' with { type: 'json' };
+
+/**
+ * Helper to create text response
+ */
+function textResponse(text) {
+  return {
+    content: [{ type: 'text', text }]
+  };
+}
+
+/**
  * Tool definitions for ${config.projectName}
  */
 export const tools = [
@@ -390,13 +475,6 @@ export const handler = async (event, context) => {
  * Generate README.md
  */
 export function generateReadme(config, analysis, targetDir) {
-  let toolsList = '';
-  if (analysis.tools.length > 0) {
-    toolsList = '\n## Tools\n\n' + analysis.tools.map(tool => 
-      `- **${tool.name}**: ${tool.description}`
-    ).join('\n');
-  }
-
   const deployment = config.deployment || 'both';
   
   let description = 'A Model Context Protocol (MCP) server';
@@ -408,6 +486,40 @@ export function generateReadme(config, analysis, targetDir) {
   } else {
     const host = config.remoteHost === 'vercel' ? 'Vercel' : 'Netlify Functions';
     description += ` for remote deployment (${host}).`;
+  }
+
+  // Generate tools section
+  let toolsSection = '';
+  if (analysis.tools.length > 0) {
+    toolsSection = '\n## Available Tools\n\n| Tool | Description |\n|------|-------------|\n' + 
+      analysis.tools.map(tool => `| \`${tool.name}\` | ${tool.description} |`).join('\n');
+  } else {
+    // Default sample tools
+    toolsSection = `
+## Available Tools
+
+This server includes the following tools:
+
+| Tool | Description |
+|------|-------------|
+| \`echo\` | Echoes back a message. Use a preset key (\`helloWorld\`, \`welcome\`, \`goodbye\`) or provide a custom message. |
+| \`get-greeting\` | Returns a personalized greeting with style options: \`default\`, \`morning\`, \`evening\`, \`formal\`, \`casual\`. |
+| \`list-items\` | Lists all items from the data source, optionally filtered by category (\`widgets\`, \`gadgets\`, \`tools\`, \`components\`). |
+| \`get-item\` | Gets detailed information about a specific item by ID (e.g., \`item-001\`) or name. |
+| \`list-categories\` | Lists all available categories. |
+| \`get-server-info\` | Returns information about this MCP server. |
+
+## Data Source
+
+Tools are powered by a JSON data file at \`data/content.json\`. This file contains:
+
+- **greetings**: Message templates for different greeting styles
+- **echoMessages**: Preset messages for the echo tool
+- **items**: Sample items with id, name, category, description, and tags
+- **categories**: List of available categories
+- **serverInfo**: Server metadata
+
+You can modify this file to customize the data returned by the tools.`;
   }
 
   let localSection = '';
@@ -499,23 +611,27 @@ The endpoint uses stateless JSON-RPC over HTTP for serverless compatibility.
     }
   }
 
-  let projectStructure = '## Project Structure\\n\\n';
+  let projectStructure = '## Project Structure\n\n';
   if (deployment === 'local') {
     projectStructure += `- \`src/index.js\` - Main MCP server with stdio transport
-- \`src/tools.js\` - Tool definitions and handlers`;
+- \`src/tools.js\` - Tool definitions and handlers
+- \`data/content.json\` - JSON data source for tools`;
   } else if (deployment === 'remote') {
     if (config.remoteHost === 'vercel') {
       projectStructure += `- \`src/tools.js\` - Tool definitions and handlers
+- \`data/content.json\` - JSON data source for tools
 - \`api/index.js\` - Vercel Function wrapper with SSE transport
 - \`vercel.json\` - Vercel configuration`;
     } else {
       projectStructure += `- \`src/tools.js\` - Tool definitions and handlers
+- \`data/content.json\` - JSON data source for tools
 - \`netlify/functions/api.js\` - Netlify Function with stateless JSON-RPC handler
 - \`netlify.toml\` - Netlify configuration`;
     }
   } else {
     projectStructure += `- \`src/index.js\` - Main MCP server with stdio transport (local use)
-- \`src/tools.js\` - Tool definitions and handlers`;
+- \`src/tools.js\` - Tool definitions and handlers
+- \`data/content.json\` - JSON data source for tools`;
     if (config.remoteHost === 'vercel') {
       projectStructure += `
 - \`api/index.js\` - Vercel Function wrapper with SSE transport (remote use)
@@ -532,13 +648,13 @@ The endpoint uses stateless JSON-RPC over HTTP for serverless compatibility.
 ${config.description}
 
 ${description}
+${toolsSection}
 
 ## Installation
 
 \`\`\`bash
 npm install
 \`\`\`
-${toolsList}
 ${localSection}${remoteSection}
 ${projectStructure}
 
@@ -602,6 +718,69 @@ dist/
 }
 
 /**
+ * Generate sample content.json data file
+ */
+export function generateContentJson(config) {
+  return JSON.stringify({
+    greetings: {
+      default: "Hello, {name}! Welcome to " + config.projectName + ".",
+      morning: "Good morning, {name}! Hope you have a great day!",
+      evening: "Good evening, {name}! Thanks for stopping by.",
+      formal: "Greetings, {name}. We are pleased to have you here.",
+      casual: "Hey {name}! What's up?"
+    },
+    echoMessages: {
+      helloWorld: "Hello, World!",
+      welcome: "Welcome to the MCP server!",
+      goodbye: "Goodbye and thanks for using " + config.projectName + "!"
+    },
+    items: [
+      {
+        id: "item-001",
+        name: "Widget Alpha",
+        category: "widgets",
+        description: "A versatile widget for everyday use",
+        tags: ["utility", "beginner-friendly"]
+      },
+      {
+        id: "item-002",
+        name: "Gadget Beta",
+        category: "gadgets",
+        description: "An advanced gadget with multiple features",
+        tags: ["advanced", "multi-purpose"]
+      },
+      {
+        id: "item-003",
+        name: "Tool Gamma",
+        category: "tools",
+        description: "A powerful tool for complex tasks",
+        tags: ["professional", "high-performance"]
+      },
+      {
+        id: "item-004",
+        name: "Component Delta",
+        category: "components",
+        description: "A modular component for building systems",
+        tags: ["modular", "extensible"]
+      },
+      {
+        id: "item-005",
+        name: "Widget Epsilon",
+        category: "widgets",
+        description: "A specialized widget for specific tasks",
+        tags: ["specialized", "efficient"]
+      }
+    ],
+    categories: ["widgets", "gadgets", "tools", "components"],
+    serverInfo: {
+      name: config.projectName,
+      version: "1.0.0",
+      description: config.description || "A sample MCP server demonstrating data-driven tools"
+    }
+  }, null, 2);
+}
+
+/**
  * Generate Netlify configuration (netlify.toml)
  */
 export function generateNetlifyConfig(config) {
@@ -612,7 +791,7 @@ export function generateNetlifyConfig(config) {
 
 [functions]
   node_bundler = "esbuild"
-  included_files = ["src/**"]
+  included_files = ["src/**", "data/**"]
 
 [[redirects]]
   from = "/mcp/*"

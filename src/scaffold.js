@@ -10,7 +10,8 @@ import {
   generateReadme,
   generateGitignore,
   generateNetlifyConfig,
-  generateVercelConfig
+  generateVercelConfig,
+  generateContentJson
 } from './templates.js';
 
 /**
@@ -111,6 +112,11 @@ export async function scaffoldProject(config, analysis, targetDir) {
       path: 'data/README.md',
       content: '# Data\n\nStore your JSON data files here. You can use these files to generate new tools using an LLM.',
       description: 'data/README.md'
+    },
+    {
+      path: 'data/content.json',
+      content: generateContentJson(config),
+      description: 'data/content.json (sample data)'
     }
   );
 
@@ -137,7 +143,7 @@ export async function scaffoldProject(config, analysis, targetDir) {
   if (analysis.summary.toolCount > 0) {
     console.log(chalk.white('  Tools:'), chalk.bold(analysis.summary.toolCount));
   } else {
-    console.log(chalk.white('  Tools:'), chalk.bold('2 (sample tools)'));
+    console.log(chalk.white('  Tools:'), chalk.bold('6 (sample tools)'));
   }
 
   // Print next steps
