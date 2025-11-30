@@ -8,11 +8,6 @@ export function generatePackageJson(config, analysis) {
     '@modelcontextprotocol/sdk': '^1.0.4'
   };
 
-  // Only add serverless-http if deploying remotely to Netlify
-  if ((config.deployment === 'remote' || config.deployment === 'both') && config.remoteHost !== 'vercel') {
-    dependencies['serverless-http'] = '^3.2.0';
-  }
-
   const scripts = {};
   
   // Only add start/dev scripts if deploying locally
@@ -273,110 +268,119 @@ export default async function handler(req, res) {
 
 /**
  * Generate Netlify Function handler (api.js)
+ * Uses stateless JSON-RPC handling for serverless compatibility
  */
 export function generateNetlifyFunction(config) {
-  return `import serverless from 'serverless-http';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { tools } from '../../src/tools.js';
+  return `import { tools } from '../../src/tools.js';
 
 /**
- * Create MCP server for HTTP/SSE transport (Netlify Functions)
+ * Stateless JSON-RPC handler for serverless environments
  */
-const createServer = () => {
-  const server = new Server(
-    {
-      name: '${config.projectName}',
-      version: '1.0.0',
-    },
-    {
-      capabilities: {
-        tools: {},
-      },
+async function handleJsonRpcRequest(request) {
+  const { method, params, id } = request;
+
+  try {
+    let result;
+
+    if (method === 'initialize') {
+      result = {
+        protocolVersion: '2024-11-05',
+        capabilities: { tools: {} },
+        serverInfo: { name: '${config.projectName}', version: '1.0.0' }
+      };
+    } else if (method === 'tools/list') {
+      result = {
+        tools: tools.map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema
+        }))
+      };
+    } else if (method === 'tools/call') {
+      const tool = tools.find(t => t.name === params.name);
+      if (!tool) throw new Error(\`Unknown tool: \${params.name}\`);
+      result = await tool.handler(params.arguments || {});
+    } else if (method === 'notifications/initialized') {
+      return null; // Notifications don't get responses
+    } else if (method === 'ping') {
+      result = {};
+    } else {
+      throw new Error(\`Unknown method: \${method}\`);
     }
-  );
 
-  // Handler for listing available tools
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-      tools: tools.map(tool => ({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema
-      }))
-    };
-  });
-
-  // Handler for calling tools
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const tool = tools.find(t => t.name === request.params.name);
-    
-    if (!tool) {
-      throw new Error(\`Unknown tool: \${request.params.name}\`);
-    }
-
-    return await tool.handler(request.params.arguments);
-  });
-
-  return server;
-};
+    return { jsonrpc: '2.0', id, result };
+  } catch (error) {
+    return { jsonrpc: '2.0', id, error: { code: -32603, message: error.message } };
+  }
+}
 
 /**
  * Netlify Function handler
- * Supports both SSE transport for MCP and basic HTTP requests
  */
 export const handler = async (event, context) => {
-  // Handle SSE connection for MCP
-  if (event.path === '/sse' || event.httpMethod === 'GET') {
-    const server = createServer();
-    const transport = new SSEServerTransport('/message', server);
-    
-    return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-      body: await transport.start(),
-    };
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Accept, Mcp-Session-Id',
+  };
+
+  // CORS preflight
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers: corsHeaders, body: '' };
   }
 
-  // Handle message endpoint for MCP
-  if (event.path === '/message' && event.httpMethod === 'POST') {
-    const server = createServer();
-    const transport = new SSEServerTransport('/message', server);
-    
+  // MCP JSON-RPC requests
+  if (event.httpMethod === 'POST') {
     try {
-      const result = await transport.handleMessage(JSON.parse(event.body));
+      const request = JSON.parse(event.body);
+      
+      // Handle batch requests
+      if (Array.isArray(request)) {
+        const responses = [];
+        for (const req of request) {
+          const response = await handleJsonRpcRequest(req);
+          if (response !== null) responses.push(response);
+        }
+        return {
+          statusCode: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify(responses.length === 1 ? responses[0] : responses)
+        };
+      }
+      
+      // Single request
+      const response = await handleJsonRpcRequest(request);
+      if (response === null) {
+        return { statusCode: 202, headers: corsHeaders, body: '' };
+      }
       return {
         statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(result),
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify(response)
       };
     } catch (error) {
       return {
-        statusCode: 500,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: error.message }),
+        statusCode: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: null,
+          error: { code: -32700, message: 'Parse error: ' + error.message }
+        })
       };
     }
   }
 
-  // Health check
+  // Health check (GET)
   return {
     statusCode: 200,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       name: '${config.projectName}',
       version: '1.0.0',
       status: 'healthy',
-      endpoints: {
-        sse: '/sse',
-        message: '/message'
-      }
-    }),
+      protocol: 'MCP JSON-RPC 2.0',
+      tools: tools.length
+    })
   };
 };
 `;
@@ -490,10 +494,7 @@ Once deployed, configure your Claude Desktop MCP settings to use the remote serv
 
 Replace \`your-site.netlify.app\` with your actual Netlify URL.
 
-#### Available Endpoints:
-
-- **MCP Endpoint**: \`https://your-site.netlify.app/mcp\`
-- **Health Check**: \`https://your-site.netlify.app/mcp\`
+The endpoint uses stateless JSON-RPC over HTTP for serverless compatibility.
 `;
     }
   }
@@ -509,7 +510,7 @@ Replace \`your-site.netlify.app\` with your actual Netlify URL.
 - \`vercel.json\` - Vercel configuration`;
     } else {
       projectStructure += `- \`src/tools.js\` - Tool definitions and handlers
-- \`netlify/functions/api.js\` - Netlify Function wrapper with SSE transport
+- \`netlify/functions/api.js\` - Netlify Function with stateless JSON-RPC handler
 - \`netlify.toml\` - Netlify configuration`;
     }
   } else {
@@ -521,7 +522,7 @@ Replace \`your-site.netlify.app\` with your actual Netlify URL.
 - \`vercel.json\` - Vercel configuration`;
     } else {
       projectStructure += `
-- \`netlify/functions/api.js\` - Netlify Function wrapper with SSE transport (remote use)
+- \`netlify/functions/api.js\` - Netlify Function with stateless JSON-RPC handler (remote use)
 - \`netlify.toml\` - Netlify configuration`;
     }
   }
