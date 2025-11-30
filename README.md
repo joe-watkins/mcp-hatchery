@@ -27,27 +27,45 @@ You'll be prompted for a project name and description. The tool generates a comp
 ```
 my-mcp-server/
 ├── src/
-│   ├── index.ts           # Local MCP server (stdio transport)
-│   └── tools.ts           # Tool definitions with Zod schemas
+│   ├── index.js       # Local MCP server (stdio transport)
+│   └── tools.js       # Tool definitions with Zod schemas
 ├── netlify/
 │   └── functions/
-│       └── api.js         # Netlify Function (SSE transport)
+│       └── api.js     # Netlify Function (SSE transport)
+├── data/              # Optional data files for your tools
 ├── package.json
-├── tsconfig.json
 ├── netlify.toml
 └── README.md
 ```
+
+- **src/tools.js** — Define your MCP tools here (name, description, schema, handler)
+- **src/index.js** — Stdio server for local IDE integration
+- **netlify/functions/api.js** — SSE server for remote deployment
+- **data/** — Store static data files your tools need to access
 
 ### IDE Configuration
 
 Add to your IDE's MCP settings:
 
+**Local:**
 ```json
 {
   "mcpServers": {
     "my-server": {
       "command": "node",
-      "args": ["/absolute/path/to/my-mcp-server/build/index.js"]
+      "args": ["/absolute/path/to/my-mcp-server/src/index.js"]
+    }
+  }
+}
+```
+
+**Remote (after Netlify deployment):**
+```json
+{
+  "mcpServers": {
+    "my-server": {
+      "command": "npx",
+      "args": ["mcp-remote@next", "https://my-server.netlify.app/mcp"]
     }
   }
 }
