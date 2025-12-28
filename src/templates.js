@@ -781,6 +781,507 @@ export function generateContentJson(config) {
 }
 
 /**
+ * Generate Python requirements.txt for FastMCP
+ */
+export function generateFastMCPRequirements() {
+  return `fastmcp>=2.0.0
+`;
+}
+
+/**
+ * Generate Python server.py for FastMCP
+ */
+export function generateFastMCPServer(config) {
+  return `"""
+${config.description}
+
+A FastMCP server that exposes data-driven tools for AI assistants.
+"""
+
+from fastmcp import FastMCP
+import json
+from pathlib import Path
+
+# Initialize FastMCP server
+mcp = FastMCP("${config.projectName}")
+
+# Load data from JSON file
+DATA_PATH = Path(__file__).parent / "data" / "content.json"
+
+def load_data():
+    """Load data at module level for efficiency"""
+    with open(DATA_PATH, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+DATA = load_data()
+
+
+@mcp.tool()
+def echo(message: str) -> str:
+    """
+    Echoes back a message. Use a preset key (helloWorld, welcome, goodbye) or provide a custom message.
+    
+    Args:
+        message: Message to echo back, or a preset key (helloWorld, welcome, goodbye)
+    
+    Returns:
+        The echoed message
+    """
+    preset_message = DATA.get('echoMessages', {}).get(message)
+    output_message = preset_message if preset_message else message
+    return f"Echo: {output_message}"
+
+
+@mcp.tool()
+def get_greeting(name: str, style: str = "default") -> str:
+    """
+    Returns a personalized greeting.
+    
+    Args:
+        name: Name to greet
+        style: Greeting style (default, morning, evening, formal, casual)
+    
+    Returns:
+        Personalized greeting message
+    """
+    template = DATA.get('greetings', {}).get(style, DATA['greetings']['default'])
+    greeting = template.replace('{name}', name)
+    return greeting
+
+
+@mcp.tool()
+def list_items(category: str = None) -> str:
+    """
+    Lists all items from the data source, optionally filtered by category.
+    
+    Args:
+        category: Filter by category (widgets, gadgets, tools, components). Optional.
+    
+    Returns:
+        Formatted list of items
+    """
+    items = DATA.get('items', [])
+    
+    if category:
+        items = [item for item in items if item.get('category') == category]
+    
+    if not items:
+        return 'No items found.'
+    
+    item_list = []
+    for item in items:
+        item_list.append(f"• {item['name']} ({item['category']}): {item['description']}")
+    
+    result = f"Found {len(items)} item(s):\\n\\n" + "\\n".join(item_list)
+    return result
+
+
+@mcp.tool()
+def get_item(query: str) -> str:
+    """
+    Gets detailed information about a specific item by ID or name.
+    
+    Args:
+        query: Item ID (e.g., item-001) or name to search for
+    
+    Returns:
+        Detailed item information or not found message
+    """
+    items = DATA.get('items', [])
+    query_lower = query.lower()
+    
+    item = None
+    for i in items:
+        if i.get('id', '').lower() == query_lower or query_lower in i.get('name', '').lower():
+            item = i
+            break
+    
+    if not item:
+        return f'No item found matching "{query}".'
+    
+    tags = ', '.join(item.get('tags', []))
+    result = f"""**{item['name']}** ({item['id']})
+
+Category: {item['category']}
+Description: {item['description']}
+Tags: {tags}"""
+    
+    return result
+
+
+@mcp.tool()
+def list_categories() -> str:
+    """
+    Lists all available categories.
+    
+    Returns:
+        Formatted list of categories
+    """
+    categories = DATA.get('categories', [])
+    category_list = "\\n".join([f"• {c}" for c in categories])
+    return f"Available categories:\\n\\n{category_list}"
+
+
+@mcp.tool()
+def get_server_info() -> str:
+    """
+    Returns information about this MCP server.
+    
+    Returns:
+        Server information
+    """
+    info = DATA.get('serverInfo', {})
+    return f"**{info.get('name', 'Unknown')}** v{info.get('version', '1.0.0')}\\n\\n{info.get('description', '')}"
+
+
+if __name__ == "__main__":
+    # Run the FastMCP server
+    mcp.run()
+`;
+}
+
+/**
+ * Generate test_server.py for FastMCP
+ */
+export function generateFastMCPTestServer(config) {
+  return `"""
+Test script for ${config.projectName} FastMCP server
+
+This script validates that all tools work correctly.
+"""
+
+import json
+from pathlib import Path
+
+# Load data to test against
+DATA_PATH = Path(__file__).parent / "data" / "content.json"
+with open(DATA_PATH, 'r', encoding='utf-8') as f:
+    DATA = json.load(f)
+
+
+def test_echo():
+    """Test echo tool"""
+    from server import echo
+    
+    # Test preset message
+    result = echo("helloWorld")
+    assert "Hello, World!" in result, f"Expected 'Hello, World!' in result, got: {result}"
+    
+    # Test custom message
+    result = echo("Custom message")
+    assert "Custom message" in result, f"Expected 'Custom message' in result, got: {result}"
+    
+    print("✓ echo tool works correctly")
+
+
+def test_get_greeting():
+    """Test get_greeting tool"""
+    from server import get_greeting
+    
+    # Test default greeting
+    result = get_greeting("Alice")
+    assert "Alice" in result, f"Expected 'Alice' in result, got: {result}"
+    
+    # Test morning greeting
+    result = get_greeting("Bob", "morning")
+    assert "Bob" in result and "morning" in result.lower(), f"Expected morning greeting for Bob, got: {result}"
+    
+    print("✓ get_greeting tool works correctly")
+
+
+def test_list_items():
+    """Test list_items tool"""
+    from server import list_items
+    
+    # Test list all items
+    result = list_items()
+    assert "Found" in result, f"Expected items list, got: {result}"
+    
+    # Test filter by category
+    result = list_items("widgets")
+    assert "widget" in result.lower(), f"Expected widgets in result, got: {result}"
+    
+    print("✓ list_items tool works correctly")
+
+
+def test_get_item():
+    """Test get_item tool"""
+    from server import get_item
+    
+    # Test by ID
+    result = get_item("item-001")
+    assert "Widget Alpha" in result, f"Expected 'Widget Alpha', got: {result}"
+    
+    # Test by name
+    result = get_item("Gadget")
+    assert "Gadget" in result, f"Expected 'Gadget' in result, got: {result}"
+    
+    # Test not found
+    result = get_item("nonexistent")
+    assert "not found" in result.lower(), f"Expected 'not found' message, got: {result}"
+    
+    print("✓ get_item tool works correctly")
+
+
+def test_list_categories():
+    """Test list_categories tool"""
+    from server import list_categories
+    
+    result = list_categories()
+    assert "categories" in result.lower(), f"Expected categories list, got: {result}"
+    assert "widgets" in result, f"Expected 'widgets' in categories, got: {result}"
+    
+    print("✓ list_categories tool works correctly")
+
+
+def test_get_server_info():
+    """Test get_server_info tool"""
+    from server import get_server_info
+    
+    result = get_server_info()
+    assert DATA['serverInfo']['name'] in result, f"Expected server name in result, got: {result}"
+    
+    print("✓ get_server_info tool works correctly")
+
+
+if __name__ == "__main__":
+    print("Testing ${config.projectName} tools...\\n")
+    
+    try:
+        test_echo()
+        test_get_greeting()
+        test_list_items()
+        test_get_item()
+        test_list_categories()
+        test_get_server_info()
+        
+        print("\\n✅ All tests passed!")
+    except AssertionError as e:
+        print(f"\\n❌ Test failed: {e}")
+        exit(1)
+    except Exception as e:
+        print(f"\\n❌ Unexpected error: {e}")
+        exit(1)
+`;
+}
+
+/**
+ * Generate README.md for FastMCP projects
+ */
+export function generateFastMCPReadme(config) {
+  return `# ${config.projectName}
+
+${config.description}
+
+A Model Context Protocol (MCP) server built with FastMCP 2.0 for deployment to FastMCP Cloud and local development.
+
+## Available Tools
+
+This server includes the following tools:
+
+| Tool | Description |
+|------|-------------|
+| \`echo\` | Echoes back a message. Use a preset key (\`helloWorld\`, \`welcome\`, \`goodbye\`) or provide a custom message. |
+| \`get_greeting\` | Returns a personalized greeting with style options: \`default\`, \`morning\`, \`evening\`, \`formal\`, \`casual\`. |
+| \`list_items\` | Lists all items from the data source, optionally filtered by category (\`widgets\`, \`gadgets\`, \`tools\`, \`components\`). |
+| \`get_item\` | Gets detailed information about a specific item by ID (e.g., \`item-001\`) or name. |
+| \`list_categories\` | Lists all available categories. |
+| \`get_server_info\` | Returns information about this MCP server. |
+
+## Data Source
+
+Tools are powered by a JSON data file at \`data/content.json\`. This file contains:
+
+- **greetings**: Message templates for different greeting styles
+- **echoMessages**: Preset messages for the echo tool
+- **items**: Sample items with id, name, category, description, and tags
+- **categories**: List of available categories
+- **serverInfo**: Server metadata
+
+You can modify this file to customize the data returned by the tools.
+
+## Project Structure
+
+- \`server.py\` - Main FastMCP server with tool definitions
+- \`requirements.txt\` - Python dependencies
+- \`data/content.json\` - JSON data source for tools
+- \`test_server.py\` - Test script to validate functionality
+
+## Local Development
+
+### Prerequisites
+- Python 3.8 or higher
+- pip
+
+### Installation
+
+1. Create a virtual environment (recommended):
+\`\`\`bash
+python -m venv venv
+
+# Windows
+venv\\Scripts\\activate
+
+# macOS/Linux
+source venv/bin/activate
+\`\`\`
+
+2. Install dependencies:
+\`\`\`bash
+pip install -r requirements.txt
+\`\`\`
+
+### Testing
+
+Run the test script to validate all tools:
+\`\`\`bash
+python test_server.py
+\`\`\`
+
+### Running Locally
+
+Start the FastMCP server:
+\`\`\`bash
+python server.py
+\`\`\`
+
+Or use the FastMCP CLI:
+\`\`\`bash
+fastmcp run server.py:mcp
+\`\`\`
+
+### Configure Claude Desktop (Local)
+
+Add this to your Claude Desktop MCP settings:
+
+\`\`\`json
+{
+  "mcpServers": {
+    "${config.projectName}": {
+      "command": "python",
+      "args": ["server.py"]
+    }
+  }
+}
+\`\`\`
+
+Or if using the virtual environment:
+
+\`\`\`json
+{
+  "mcpServers": {
+    "${config.projectName}": {
+      "command": "/absolute/path/to/venv/Scripts/python.exe",
+      "args": ["/absolute/path/to/server.py"]
+    }
+  }
+}
+\`\`\`
+
+## Deployment to FastMCP Cloud
+
+### Quick Start
+
+1. **Visit FastMCP Cloud**
+   - Navigate to [fastmcp.cloud](https://fastmcp.cloud/)
+   - Sign in with your GitHub account
+
+2. **Push to GitHub**
+   \`\`\`bash
+   git init
+   git add .
+   git commit -m "Initial commit"
+   git branch -M main
+   git remote add origin https://github.com/yourusername/${config.projectName}.git
+   git push -u origin main
+   \`\`\`
+
+3. **Create a Project**
+   - Click "Create a Project" in FastMCP Cloud
+   - Choose your GitHub repository
+   - Configure:
+     - **Name**: \`${config.projectName}\` (or your preferred name)
+     - **Entrypoint**: \`server.py:mcp\`
+     - **Authentication**: Choose public or private access
+   - Click "Deploy"
+
+4. **Connect to Your Server**
+   Once deployed, your server is available at:
+   \`\`\`
+   https://your-project-name.fastmcp.app/mcp
+   \`\`\`
+
+   FastMCP Cloud provides instant connection configs for:
+   - **Claude Desktop** - Copy/paste JSON config
+   - **Cursor** - Connection settings
+   - **Any MCP Client** - Use the provided URL
+
+### Auto-Updates
+- FastMCP Cloud monitors your \`main\` branch
+- Automatic redeployment on every push
+- PR builds get unique URLs for testing before production
+
+### Pre-Deployment Checklist
+- [ ] Repository is on GitHub (public or private)
+- [ ] \`server.py\` contains FastMCP instance (\`mcp = FastMCP(...)\`)
+- [ ] \`requirements.txt\` includes \`fastmcp>=2.0.0\`
+- [ ] Data files are in the repository
+- [ ] Server uses relative paths (\`Path(__file__).parent\`)
+- [ ] All tools have docstrings and type hints
+- [ ] Server runs locally without errors
+- [ ] Test script passes: \`python test_server.py\`
+
+### Verify Before Deployment
+\`\`\`bash
+fastmcp inspect server.py:mcp
+\`\`\`
+
+## Adding New Tools
+
+Edit \`server.py\` to add new tool definitions. Use the \`@mcp.tool()\` decorator:
+
+\`\`\`python
+@mcp.tool()
+def my_new_tool(param: str) -> str:
+    """
+    Tool description here.
+    
+    Args:
+        param: Parameter description
+    
+    Returns:
+        What the tool returns
+    """
+    # Implementation
+    return f"Result: {param}"
+\`\`\`
+
+## Generating Tools from Data
+
+You can use the \`data\` folder to store JSON files and use an LLM (like Claude or Copilot) to generate tools for them.
+
+1. Place your JSON file in the \`data\` folder (e.g., \`data/products.json\`).
+2. Use the following prompt with your LLM:
+
+> I have a JSON file at \`data/products.json\` (or whatever your file is named). Please analyze the structure of this data and create new MCP tools in \`server.py\` to interact with it.
+>
+> At a minimum, please create:
+> 1. A tool to list all items (with optional filtering)
+> 2. A tool to get a specific item by ID (or unique field)
+> 3. A tool to search items by a keyword
+>
+> Please ensure the tools follow the existing pattern in \`server.py\` with proper docstrings, type hints, and error handling.
+
+## Learn More
+
+- [Model Context Protocol Documentation](https://modelcontextprotocol.io/)
+- [FastMCP Documentation](https://github.com/jlowin/fastmcp)
+- [FastMCP Cloud](https://fastmcp.cloud/)
+- [Python Type Hints](https://docs.python.org/3/library/typing.html)
+`;
+}
+
+/**
  * Generate Netlify configuration (netlify.toml)
  */
 export function generateNetlifyConfig(config) {

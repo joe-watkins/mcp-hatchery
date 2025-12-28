@@ -22,6 +22,16 @@ export async function promptProjectConfig(initialProjectName) {
     },
     {
       type: 'list',
+      name: 'sourceType',
+      message: 'Server type:',
+      choices: [
+        { name: 'JavaScript (Node.js with MCP SDK)', value: 'bare-bones' },
+        { name: 'Python (FastMCP for FastMCP Cloud)', value: 'fastmcp' }
+      ],
+      default: 'bare-bones'
+    },
+    {
+      type: 'list',
       name: 'deployment',
       message: 'Deployment target:',
       choices: [
@@ -29,7 +39,8 @@ export async function promptProjectConfig(initialProjectName) {
         { name: 'Local only (stdio)', value: 'local' },
         { name: 'Remote only', value: 'remote' }
       ],
-      default: 'both'
+      default: 'both',
+      when: (answers) => answers.sourceType === 'bare-bones'
     },
     {
       type: 'list',
@@ -40,12 +51,15 @@ export async function promptProjectConfig(initialProjectName) {
         { name: 'Vercel', value: 'vercel' }
       ],
       default: 'netlify',
-      when: (answers) => answers.deployment === 'remote' || answers.deployment === 'both'
+      when: (answers) => answers.sourceType === 'bare-bones' && (answers.deployment === 'remote' || answers.deployment === 'both')
     }
   ]);
 
-  // Always use bare-bones
-  answers.sourceType = 'bare-bones';
+  // Set deployment for FastMCP (always both local and cloud)
+  if (answers.sourceType === 'fastmcp') {
+    answers.deployment = 'both';
+    answers.remoteHost = 'fastmcp-cloud';
+  }
 
   return answers;
 }
