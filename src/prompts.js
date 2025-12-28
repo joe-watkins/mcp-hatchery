@@ -39,27 +39,25 @@ export async function promptProjectConfig(initialProjectName) {
         { name: 'Local only (stdio)', value: 'local' },
         { name: 'Remote only', value: 'remote' }
       ],
-      default: 'both',
-      when: (answers) => answers.sourceType === 'bare-bones'
+      default: 'both'
     },
     {
       type: 'list',
       name: 'remoteHost',
       message: 'Remote host:',
-      choices: [
-        { name: 'Netlify', value: 'netlify' },
-        { name: 'Vercel', value: 'vercel' }
-      ],
-      default: 'netlify',
-      when: (answers) => answers.sourceType === 'bare-bones' && (answers.deployment === 'remote' || answers.deployment === 'both')
+      choices: (answers) => {
+        if (answers.sourceType === 'fastmcp') {
+          return [{ name: 'FastMCP Cloud', value: 'fastmcp-cloud' }];
+        }
+        return [
+          { name: 'Netlify', value: 'netlify' },
+          { name: 'Vercel', value: 'vercel' }
+        ];
+      },
+      default: (answers) => answers.sourceType === 'fastmcp' ? 'fastmcp-cloud' : 'netlify',
+      when: (answers) => answers.deployment === 'remote' || answers.deployment === 'both'
     }
   ]);
-
-  // Set deployment for FastMCP (always both local and cloud)
-  if (answers.sourceType === 'fastmcp') {
-    answers.deployment = 'both';
-    answers.remoteHost = 'fastmcp-cloud';
-  }
 
   return answers;
 }

@@ -1,7 +1,7 @@
 {
   "name": "mcp-hatchery",
-  "version": "2.0.0",
-  "description": "CLI tool to scaffold Model Context Protocol (MCP) servers for local and remote deployment",
+  "version": "2.1.0",
+  "description": "CLI tool to scaffold Model Context Protocol (MCP) servers for local and remote deployment (JavaScript/Python)",
   "main": "index.js",
   "type": "module",
   "bin": {
@@ -17,7 +17,10 @@
     "cli",
     "code-generator",
     "netlify",
+    "vercel",
+    "fastmcp",
     "javascript",
+    "python",
     "serverless"
   ],
   "author": "Joe Watkins",
