@@ -1,8 +1,8 @@
 # MCP Hatchery 🥚
 
 A CLI tool to scaffold Model Context Protocol (MCP) servers with support for:
-- **JavaScript**: Local (stdio) and remote (Netlify/Vercel) deployment
-- **Python**: FastMCP Cloud deployment for data-driven servers
+- **JavaScript**: Using @modelcontextprotocol/sdk with Netlify/Vercel hosting
+- **Python**: Using FastMCP framework with optional FastMCP Cloud hosting
 
 ## Installation
 
@@ -27,16 +27,19 @@ You'll be prompted for a project name and description. The tool generates a comp
 ## Project Types
 
 ### JavaScript (Bare Bones)
-Traditional MCP server for local and remote deployment:
+MCP server using the official JavaScript SDK:
 - Local stdio transport for IDE integration
 - Remote HTTP/SSE transport for Netlify or Vercel
 - Example tools with Zod schema validation
+- Uses @modelcontextprotocol/sdk
 
-### FastMCP (Python)
-Python-based server optimized for FastMCP Cloud:
-- Data-driven MCP servers with sample tools
-- Includes test script and deployment guide
-- Ready for one-click deployment to FastMCP Cloud
+### Python (FastMCP)
+MCP server using the FastMCP Python framework:
+- Data-driven servers with sample query tools
+- Local stdio support for IDE integration
+- Optional remote deployment to FastMCP Cloud
+- Includes test script and comprehensive README
+- Uses fastmcp>=2.0.0
 
 ## Generated Project Structure
 
@@ -82,13 +85,25 @@ my-fastmcp-server/
 
 Add to your IDE's MCP settings:
 
-**Local:**
+**JavaScript (Local):**
 ```json
 {
   "mcpServers": {
     "my-server": {
       "command": "node",
       "args": ["/absolute/path/to/my-mcp-server/src/index.js"]
+    }
+  }
+}
+```
+
+**Python (Local):**
+```json
+{
+  "mcpServers": {
+    "my-fastmcp-server": {
+      "command": "python",
+      "args": ["/absolute/path/to/my-fastmcp-server/server.py"]
     }
   }
 }

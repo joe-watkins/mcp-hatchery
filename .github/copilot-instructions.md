@@ -1,7 +1,11 @@
 # Copilot Instructions for MCP Hatchery
 
 ## Project Overview
-MCP Hatchery is a CLI tool that scaffolds Model Context Protocol (MCP) servers. It generates JavaScript projects with dual transport support (stdio for local, SSE/HTTP for remote) targeting Netlify or Vercel deployment.
+MCP Hatchery is a CLI tool that scaffolds Model Context Protocol (MCP) servers with support for multiple languages and deployment targets:
+- **JavaScript**: Using @modelcontextprotocol/sdk with Netlify or Vercel deployment
+- **Python**: Using FastMCP framework with optional FastMCP Cloud deployment
+
+Both project types support local stdio and remote HTTP/SSE transports.
 
 ## Architecture
 
@@ -12,8 +16,11 @@ MCP Hatchery is a CLI tool that scaffolds Model Context Protocol (MCP) servers. 
 4. **Templates**: `src/templates.js` → Contains all code generation functions
 
 ### Key Design Decisions
-- **Single source of truth for tools**: Generated projects define tools in `src/tools.js` with unified structure (name, description, inputSchema, handler)
-- **Deployment flexibility**: Same tool logic works for both stdio (`src/index.js`) and HTTP/SSE transports (Netlify/Vercel functions)
+- **Multi-language support**: Generates both JavaScript and Python MCP servers
+- **JavaScript projects**: Single source of truth for tools in `src/tools.js` with unified structure (name, description, inputSchema, handler)
+- **Python projects**: FastMCP-based servers with data-driven tools defined in `server.py`
+- **Deployment flexibility**: Same tool logic works for both stdio and HTTP/SSE transports
+- **Framework separation**: JavaScript uses @modelcontextprotocol/sdk, Python uses fastmcp
 - **No TypeScript in CLI**: Despite generating TypeScript-ready patterns, the CLI itself is pure JavaScript ESM
 
 ## File Responsibilities
@@ -38,21 +45,36 @@ export function generateSomething(config, analysis) {
 ```
 
 ### Adding New Deployment Targets
-1. Add choice to `remoteHost` prompt in `src/prompts.js`
+1. Add choice to `remoteHost` prompt in `src/prompts.js` (within the choices function for the appropriate sourceType)
 2. Create `generateNewHostFunction()` and `generateNewHostConfig()` in `src/templates.js`
-3. Update `scaffoldProject()` in `src/scaffold.js` to conditionally include new files
-4. Update `generateReadme()` to document the new target
+3. Update `scaffoldProject()` or `scaffoldFastMCPProject()` in `src/scaffold.js` to conditionally include new files
+4. Update appropriate `generateReadme()` function to document the new target
 
 ### Config Object Shape
 ```javascript
 {
-  projectName: 'my-server',      // lowercase, letters, numbers, hyphens
+  projectName: 'my-server',           // lowercase, letters, numbers, hyphens
   description: 'My MCP server',
+  sourceType: 'bare-bones' | 'fastmcp',  // server type
   deployment: 'both' | 'local' | 'remote',
-  remoteHost: 'netlify' | 'vercel',  // only when deployment !== 'local'
-  sourceType: 'bare-bones'           // always this value currently
+  remoteHost: 'netlify' | 'vercel' | 'fastmcp-cloud'  // based on sourceType
 }
 ```
+
+### Project Type Structure
+
+**JavaScript (bare-bones):**
+- `src/index.js` - stdio server
+- `src/tools.js` - tool definitions
+- `netlify/functions/api.js` or `vercel/api/index.js` - remote functions
+- `package.json`, config files
+
+**Python (fastmcp):**
+- `server.py` - FastMCP server (handles both stdio and HTTP)
+- `test_server.py` - validation script
+- `requirements.txt` - Python dependencies
+- `data/` - sample data files
+- `README.md` - deployment guide
 
 ## Development Commands
 ```bash
@@ -63,15 +85,23 @@ node bin/mcp-hatchery.js create test-server  # Test without global install
 ## Common Tasks
 
 ### Adding a new template file to generated projects
+
+**For JavaScript projects:**
 1. Create generator function in `src/templates.js`
-2. Add file entry to `files` array in `src/scaffold.js`:
+2. Add file entry to `files` array in `scaffoldProject()` in `src/scaffold.js`:
    ```javascript
    { path: 'new-file.js', content: generateNewFile(config), description: 'New file' }
    ```
 
+**For Python projects:**
+1. Create generator function in `src/templates.js` (prefix with `generateFastMCP`)
+2. Add file entry to `files` array in `scaffoldFastMCPProject()` in `src/scaffold.js`
+
 ### Modifying generated tool structure
-Edit `generateToolDefinitions()` in `src/templates.js` - this affects the sample `echo` and `get-greeting` tools.
+- **JavaScript**: Edit `generateToolDefinitions()` in `src/templates.js` - affects sample tools
+- **Python**: Edit `generateFastMCPServer()` in `src/templates.js` - includes tool definitions
 
 ### Supporting new MCP SDK transports
-- Local: Modify `generateIndexFile()` in `src/templates.js`
-- Remote: Create new function like `generateVercelFunction()` or `generateNetlifyFunction()`
+- **JavaScript Local**: Modify `generateIndexFile()` in `src/templates.js`
+- **JavaScript Remote**: Create new function like `generateVercelFunction()` or `generateNetlifyFunction()`
+- **Python**: FastMCP handles transport automatically via `mcp.run()`
